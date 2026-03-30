@@ -73,8 +73,24 @@ serverProcess.on('exit', () => {
   process.exit(0);
 });
 
-// Wait for server to start
-await Bun.sleep(1000);
+// Wait for server to actually be ready
+async function waitForServer(port, timeoutMs = 15000, intervalMs = 200) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const ready = await new Promise((resolve) => {
+      const sock = net.createConnection({ host: '127.0.0.1', port }, () => {
+        sock.destroy();
+        resolve(true);
+      });
+      sock.on('error', () => resolve(false));
+    });
+    if (ready) return;
+    await Bun.sleep(intervalMs);
+  }
+  throw new Error(`Server did not start within ${timeoutMs}ms`);
+}
+
+await waitForServer(selectedPort);
 
 function stopServerProcess() {
   try {
