@@ -1,0 +1,111 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            exe_name: PythiaJS.exe
+          - os: ubuntu-22.04
+            platform: linux-x64
+            exe_name: PythiaJS
+          - os: macos-13
+            platform: macos-x64
+            exe_name: PythiaJS
+          - os: macos-14
+            platform: macos-arm64
+            exe_name: PythiaJS
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build executable
+        run: bun build --compile index.js --outfile dist/${{ matrix.exe_name }}
+
+      - name: Stage release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          New-Item -ItemType Directory -Path release/src -Force | Out-Null
+          New-Item -ItemType Directory -Path release/src/ui -Force | Out-Null
+
+          Copy-Item "dist/${{ matrix.exe_name }}" "release/${{ matrix.exe_name }}" -Force
+          Copy-Item "config.json" "release/config.json" -Force
+          if (Test-Path "pythia.db") {
+            Copy-Item "pythia.db" "release/pythia.db" -Force
+          }
+
+          # Server reads UI assets from src/ui at runtime.
+          Copy-Item "src/ui/*" "release/src/ui" -Recurse -Force
+
+          @"
+          PythiaJS
+
+          Run instructions:
+          - Windows: double-click PythiaJS.exe
+          - Linux/macOS: make executable and run from terminal
+            chmod +x ./PythiaJS
+            ./PythiaJS
+
+          Notes:
+          - This package expects bundled src/ui assets beside the executable.
+          - WebView runtime must be available on the target OS.
+          "@ | Set-Content "release/RUN.txt"
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $zipName = "PythiaJS-${{ matrix.platform }}.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path "release/*" -DestinationPath $zipName
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PythiaJS-${{ matrix.platform }}
+          path: PythiaJS-${{ matrix.platform }}.zip
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/PythiaJS-windows-x64/PythiaJS-windows-x64.zip
+            release-assets/PythiaJS-linux-x64/PythiaJS-linux-x64.zip
+            release-assets/PythiaJS-macos-x64/PythiaJS-macos-x64.zip
+            release-assets/PythiaJS-macos-arm64/PythiaJS-macos-arm64.zip
+          generate_release_notes: true
