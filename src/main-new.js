@@ -23,8 +23,7 @@ import net from "node:net";
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
-const __moduleDir = import.meta.url;
-const isCompiledBinary = __moduleDir.startsWith("file:///$bunfs");
+const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.endsWith("bun.exe");
 
 function canBindPort(port) {
   return new Promise((resolve) => {
