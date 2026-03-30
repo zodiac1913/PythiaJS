@@ -93,6 +93,8 @@ Accessibility is an ongoing priority as the UI is refined.
 
 When this repository is public, users can download PythiaJS from the GitHub Releases page.
 
+Release URL: https://github.com/zodiac1913/PythiaJS/releases
+
 ## Binary Distribution (No Bun Install For Users)
 
 Short answer: yes, you can distribute binaries.
