@@ -9,11 +9,20 @@
   <link href="q-bs.css" rel="stylesheet">
   <style>
     body{background:url('pic/PythiaJS-bg.png') no-repeat center center fixed;background-size:cover;min-height:100vh;padding-bottom:2.5rem}
-    #q{background:rgba(255,255,255,0.6)}
+    .app-shell{max-width:1280px;margin:0 auto}
+    .workspace-panel{background:rgba(248,250,252,.9);border:1px solid rgba(255,255,255,.4);box-shadow:0 20px 48px rgba(12,18,28,.22);border-radius:14px;margin:14px auto 0}
+    .workspace-title{color:#1f2937;letter-spacing:.02em}
+    #q{background:rgba(255,255,255,0.82)}
     .autocomplete{position:absolute;background:white;border:1px solid #ccc;max-height:200px;overflow-y:auto;z-index:1000;display:none}
     .autocomplete div{padding:5px 10px;cursor:pointer}
     .autocomplete div:hover{background:#0056b3;color:#fff}
     .field-selector-modal .field-item.selected{border-color:#007bff !important;background:#e7f3ff !important}
+    .help-text{color:#49576a}
+    .toolbar-grid{display:grid;grid-template-columns:1fr 1.25fr auto;gap:.75rem;align-items:start}
+    .toolbar-cell{min-width:0}
+    .toolbar-actions,.toolbar-exports{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    .toolbar-exports{justify-content:flex-end}
+    .toolbar-exports .btn-group{margin-left:0 !important}
     .query-search-wrap{position:relative}
     .query-search-results{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ccc;border-top:none;max-height:220px;overflow-y:auto;z-index:1100;display:none}
     .query-search-item{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -23,24 +32,31 @@
     .fallback-url{display:inline-block;margin-left:6px;word-break:break-all;color:#664d03;font-weight:600}
     .fallback-copy{margin-left:8px;border:1px solid #d3bf8a;background:#fff3cd;color:#664d03;border-radius:6px;padding:2px 8px;font-size:.85rem;cursor:pointer}
     .app-footer{position:fixed;right:12px;bottom:10px;z-index:1200;font-size:.75rem;color:#fff;background:rgba(0,0,0,.55);padding:4px 10px;border-radius:999px;line-height:1;backdrop-filter:blur(2px)}
+    @media (max-width:991.98px){
+      .toolbar-grid{grid-template-columns:1fr}
+      .toolbar-exports{justify-content:flex-start}
+      .workspace-panel{margin-top:10px}
+    }
+    @media (max-width:575.98px){
+      .workspace-panel{border-radius:10px}
+      .toolbar-actions .btn,.toolbar-exports .btn{flex:1 1 auto}
+    }
   </style>
 </head>
 <body>
     <nav class="navbar navbar-expand bg-dark p-3" data-bs-theme="dark">
       <a class="navbar-brand" href="#" title="Pythia JS Home" aria-label="Pythia JS Home">Pythia JS</a>
       <div class="navbar-nav me-auto mb-2 mb-lg-0">
-        <ul>
-          <li class="nav-item dropdown">
-            <button type="button" class="nav-link dropdown-toggle btn btn-link p-0 border-0 text-decoration-none" data-bs-toggle="dropdown" aria-expanded="false" title="Manage connections" aria-label="Manage connections">
-              Connections
-            </button>
-            <ul class="dropdown-menu" id="connectionsList">
-              <li><a class="dropdown-item" href="#" id="addConnection" title="Add New Connection">Add +</a></li>
-              <li><hr class="dropdown-divider"></li>
-              <li><a class="dropdown-item active" href="#" data-conn="default" title="Internal Database">Internal (SQLite)</a></li>
-            </ul>
-          </li>
-        </ul>
+        <div class="nav-item dropdown">
+          <button type="button" class="nav-link dropdown-toggle btn btn-link p-0 border-0 text-decoration-none" data-bs-toggle="dropdown" aria-expanded="false" title="Manage connections" aria-label="Manage connections">
+            Connections
+          </button>
+          <ul class="dropdown-menu" id="connectionsList">
+            <li><a class="dropdown-item" href="#" id="addConnection" title="Add New Connection">Add +</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item active" href="#" data-conn="default" title="Internal Database">Internal (SQLite)</a></li>
+          </ul>
+        </div>
       </div>
       <div class="navbar-nav ms-auto">
         <a class="nav-link" href="#" id="currentConnInfo" style="cursor:pointer" title="View current connection details">
@@ -53,45 +69,39 @@
       <a id="fallbackUrl" class="fallback-url" href="about:blank" target="_blank" rel="noopener">local URL</a>
       <button id="copyFallbackUrl" type="button" class="fallback-copy" title="Copy fallback URL" aria-label="Copy fallback URL">Copy</button>
     </output>
-    <main id="mainContent">
+    <main id="mainContent" class="app-shell container-fluid px-2 px-md-3">
     <h1 class="visually-hidden">Pythia JS SQL Console</h1>
-    <div class="flex-column"></div>
-    <div class="d-flex">
-    
-      <div class="flex-fill p-3">
-        <h2 class="h5 text-white bg-dark bg-opacity-50 d-inline-block px-2 py-1 rounded">Query Workspace</h2>
+      <section class="workspace-panel p-3 p-md-4">
+        <h2 class="h5 workspace-title mb-3">Query Workspace</h2>
 
 
         <div class="mb-3" style="position:relative">
           <label for="q" class="form-label">Enter Query:</label>
           <div class="mb-1">
-            <small class="text-muted">
+            <small class="help-text">
               <i class="bi bi-lightbulb" aria-hidden="true"></i> 
               Normal SQL: <code>SELECT fields FROM table WHERE...</code> | 
               Postgres-style: <code>table select fields where...</code> | 
               Ctrl+Space: Field selector with WASD navigation
-
-              []
             </small>
           </div>
           <textarea id="q" class="form-control" rows="5" placeholder="Type your SQL query here..." title="SQL query editor" aria-label="SQL query editor"></textarea>
           <div id="autocomplete" class="autocomplete" aria-label="SQL autocomplete suggestions"></div>
         </div>
 
-        <div class="d-flex">
-          <div id="ButtonGroup1" class="p-2 flex-fill">
+        <div class="toolbar-grid">
+          <div id="ButtonGroup1" class="toolbar-cell toolbar-actions">
           <button id="run" class="btn btn-primary" title="Run query" aria-label="Run query">Run Query</button>
           <button id="history" class="btn btn-secondary" title="Show query history" aria-label="Show History - query history">Show History</button>
           </div>
-          <div id="ButtonGroup2" class="p-2 flex-fill">
+          <div id="ButtonGroup2" class="toolbar-cell">
             <div class="query-search-wrap">
               <input id="historySearch" class="form-control" type="text" placeholder="Search saved queries for this connection..." autocomplete="off" aria-label="Search saved queries" title="Search saved queries">
               <div id="historySearchResults" class="query-search-results" aria-label="Saved query search results"></div>
             </div>
           </div>
-          <div id="ButtonGroup3" class="p-2 flex-fill">
-            <div class="border-2 border-dark">
-              <div class="btn-group ms-3">
+          <div id="ButtonGroup3" class="toolbar-cell toolbar-exports">
+            <div class="btn-group">
                 <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Choose output format" aria-label="Choose output format">
                   <span id="formatLabel">Table</span>
                 </button>
@@ -101,9 +111,8 @@
                   <li><a class="dropdown-item" href="#" data-format="fixed" title="Display as fixed-width text" aria-label="Text Fixed - display as fixed-width text">Text Fixed</a></li>
                   <li><a class="dropdown-item" href="#" data-format="csv" title="Display as CSV text" aria-label="Text CSV - display as CSV text">Text CSV</a></li>
                 </ul>
-              </div>
-              <button id="saveFile" class="btn btn-success ms-2" title="Save query result" aria-label="Save File - query result">Save File</button>
             </div>
+            <button id="saveFile" class="btn btn-success" title="Save query result" aria-label="Save File - query result">Save File</button>
           </div>
         </div>
         <div id="progress" class="mt-3" style="display:none">
@@ -115,8 +124,7 @@
 
         <div id="answer" class="mt-3 p-3 bg-light border rounded" style="overflow:auto;display:none" aria-live="polite" aria-label="Query results" title="Query results"></div>
 
-      </div>
-    </div>
+      </section>
     </main>
 
     <footer class="app-footer" aria-label="Application version">
