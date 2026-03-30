@@ -20,9 +20,9 @@
 
 import { spawn, execFileSync } from "node:child_process";
 import { Webview, SizeHint } from "webview-bun";
+import { server } from "./server.js";
 
-// Start the API server in-process (required for compiled binaries)
-const { server } = await import("./server.js");
+// Server is now running in-process
 const selectedPort = server.port;
 const appUrl = `http://localhost:${selectedPort}`;
 const browserFallbackUrl = `${appUrl}/?mode=fallback`;
