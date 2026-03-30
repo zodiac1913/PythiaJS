@@ -21,8 +21,18 @@ import { connectDB } from "./db/index.js";
 import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, clearLogs } from "./db/sqlite.js";
 import { addConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
 import { readFileSync } from "fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
 import PDFDocument from "pdfkit";
+
+// When running as a compiled binary, resolve asset paths relative to the executable
+const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const isCompiledBinary = __moduleDir.startsWith("/$bunfs");
+const assetBase = isCompiledBinary ? path.dirname(process.execPath) : process.cwd();
+function assetPath(relativePath) {
+  return path.resolve(assetBase, relativePath);
+}
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
@@ -109,10 +119,10 @@ async function getConnectionSchema(id) {
 
 await connectDB();
 
-const bootstrapIcons = readFileSync("src/ui/bootstrap-icons.css", "utf-8");
-const bootstrapIconsFont = readFileSync("src/ui/fonts/bootstrap-icons.woff2");
-const qBs = readFileSync("src/ui/q-bs.css", "utf-8");
-const bgImage = readFileSync("src/ui/pic/PythiaJS-bg.png");
+const bootstrapIcons = readFileSync(assetPath("src/ui/bootstrap-icons.css"), "utf-8");
+const bootstrapIconsFont = readFileSync(assetPath("src/ui/fonts/bootstrap-icons.woff2"));
+const qBs = readFileSync(assetPath("src/ui/q-bs.css"), "utf-8");
+const bgImage = readFileSync(assetPath("src/ui/pic/PythiaJS-bg.png"));
 
 function createServer(port) {
   return Bun.serve({
@@ -134,7 +144,7 @@ function createServer(port) {
     
     // Serve the HTML
     if (url.pathname === "/") {
-      const html = readFileSync("src/ui/index.html", "utf-8");
+      const html = readFileSync(assetPath("src/ui/index.html"), "utf-8");
       return new Response(html, {
         headers: { 
           "Content-Type": "text/html",
@@ -181,7 +191,7 @@ function createServer(port) {
     
     // Serve JavaScript modules
     if (url.pathname === "/script/state.js") {
-      const stateJs = readFileSync("src/script/state.js", "utf-8");
+      const stateJs = readFileSync(assetPath("src/script/state.js"), "utf-8");
       return new Response(stateJs, {
         headers: { 
           "Content-Type": "application/javascript",
@@ -191,7 +201,7 @@ function createServer(port) {
     }
     
     if (url.pathname === "/script/api.js") {
-      const apiJs = readFileSync("src/script/api.js", "utf-8");
+      const apiJs = readFileSync(assetPath("src/script/api.js"), "utf-8");
       return new Response(apiJs, {
         headers: { 
           "Content-Type": "application/javascript",
@@ -201,7 +211,7 @@ function createServer(port) {
     }
     
     if (url.pathname === "/script/autocomplete.js") {
-      const autocompleteJs = readFileSync("src/script/autocomplete.js", "utf-8");
+      const autocompleteJs = readFileSync(assetPath("src/script/autocomplete.js"), "utf-8");
       return new Response(autocompleteJs, {
         headers: { 
           "Content-Type": "application/javascript",
@@ -211,7 +221,7 @@ function createServer(port) {
     }
 
     if (url.pathname === "/script/db-identifiers.js") {
-      const dbIdentifiersJs = readFileSync("src/script/db-identifiers.js", "utf-8");
+      const dbIdentifiersJs = readFileSync(assetPath("src/script/db-identifiers.js"), "utf-8");
       return new Response(dbIdentifiersJs, {
         headers: {
           "Content-Type": "application/javascript",
@@ -221,7 +231,7 @@ function createServer(port) {
     }
     
     if (url.pathname === "/script/display.js") {
-      const displayJs = readFileSync("src/script/display.js", "utf-8");
+      const displayJs = readFileSync(assetPath("src/script/display.js"), "utf-8");
       return new Response(displayJs, {
         headers: { 
           "Content-Type": "application/javascript",
@@ -231,7 +241,7 @@ function createServer(port) {
     }
     
     if (url.pathname === "/script/modals.js") {
-      const modalsJs = readFileSync("src/script/modals.js", "utf-8");
+      const modalsJs = readFileSync(assetPath("src/script/modals.js"), "utf-8");
       return new Response(modalsJs, {
         headers: { 
           "Content-Type": "application/javascript",
@@ -241,7 +251,7 @@ function createServer(port) {
     }
     
     if (url.pathname === "/script/event-handlers.js") {
-      const eventHandlersJs = readFileSync("src/script/event-handlers.js", "utf-8");
+      const eventHandlersJs = readFileSync(assetPath("src/script/event-handlers.js"), "utf-8");
       return new Response(eventHandlersJs, {
         headers: { 
           "Content-Type": "application/javascript",
