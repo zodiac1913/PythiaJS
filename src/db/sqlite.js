@@ -8,7 +8,10 @@ import { initConnectionManager, loadConnections } from "./connections.js";
 let db;
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const baseDbPath = path.resolve(moduleDir, "base", "pythia.base.db");
+const isCompiledBinary = moduleDir.startsWith("/$bunfs");
+const baseDbPath = isCompiledBinary
+  ? path.resolve(path.dirname(process.execPath), "src", "db", "base", "pythia.base.db")
+  : path.resolve(moduleDir, "base", "pythia.base.db");
 
 function resolveRuntimeDbPath(file) {
   return path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
