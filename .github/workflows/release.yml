@@ -92,20 +92,30 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && always()
 
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: PythiaJS-*
+          merge-multiple: true
           path: release-assets
+
+      - name: Verify at least one artifact exists
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(release-assets/*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No build artifacts were produced. Skipping release publish."
+            exit 1
+          fi
+          echo "Artifacts to publish:"
+          ls -1 release-assets/*.zip
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-assets/PythiaJS-windows-x64/PythiaJS-windows-x64.zip
-            release-assets/PythiaJS-linux-x64/PythiaJS-linux-x64.zip
-            release-assets/PythiaJS-macos-x64/PythiaJS-macos-x64.zip
-            release-assets/PythiaJS-macos-arm64/PythiaJS-macos-arm64.zip
+          files: release-assets/*.zip
           generate_release_notes: true
