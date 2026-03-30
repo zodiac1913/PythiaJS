@@ -10,14 +10,14 @@
   <style>
     body{background:url('pic/PythiaJS-bg.png') no-repeat center center fixed;background-size:cover;min-height:100vh;padding-bottom:2.5rem}
     .app-shell{max-width:1280px;margin:0 auto}
-    .workspace-panel{background:rgba(248,250,252,.9);border:1px solid rgba(255,255,255,.4);box-shadow:0 20px 48px rgba(12,18,28,.22);border-radius:14px;margin:14px auto 0}
+    .workspace-panel{background:linear-gradient(160deg,rgba(250,252,255,.62),rgba(242,247,253,.52));border:1px solid rgba(255,255,255,.42);box-shadow:0 20px 48px rgba(12,18,28,.16);backdrop-filter:blur(2px) saturate(105%);-webkit-backdrop-filter:blur(2px) saturate(105%);border-radius:14px;margin:14px auto 0}
     .workspace-title{color:#1f2937;letter-spacing:.02em}
-    #q{background:rgba(255,255,255,0.82)}
+    #q{background:rgba(255,255,255,.72)}
     .autocomplete{position:absolute;background:white;border:1px solid #ccc;max-height:200px;overflow-y:auto;z-index:1000;display:none}
     .autocomplete div{padding:5px 10px;cursor:pointer}
     .autocomplete div:hover{background:#0056b3;color:#fff}
     .field-selector-modal .field-item.selected{border-color:#007bff !important;background:#e7f3ff !important}
-    .help-text{color:#49576a}
+    .help-text{color:#334155}
     .toolbar-grid{display:grid;grid-template-columns:1fr 1.25fr auto;gap:.75rem;align-items:start}
     .toolbar-cell{min-width:0}
     .toolbar-actions,.toolbar-exports{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
@@ -27,6 +27,7 @@
     .query-search-results{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ccc;border-top:none;max-height:220px;overflow-y:auto;z-index:1100;display:none}
     .query-search-item{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .query-search-item.active,.query-search-item:hover{background:#0d6efd;color:#fff}
+    #answer{background:rgba(255,255,255,.72) !important}
     #queryProgress{height:1rem}
     .fallback-banner{display:none;background:rgba(255,243,205,0.95);color:#664d03;border:1px solid #ffecb5;padding:10px 14px;margin:12px 16px 0;border-radius:8px;font-size:.95rem}
     .fallback-url{display:inline-block;margin-left:6px;word-break:break-all;color:#664d03;font-weight:600}
