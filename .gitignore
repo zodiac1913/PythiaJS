@@ -18,6 +18,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # local runtime databases (contains user/classified data)
 pythia.db
 
+# local emergency recovery snapshots
+.recovery/
+
 # dotenv environment variable files
 .env
 .env.development.local
