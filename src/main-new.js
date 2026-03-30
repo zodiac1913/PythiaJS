@@ -58,7 +58,10 @@ const browserFallbackUrl = `${appUrl}/?mode=fallback`;
 console.log(`Starting PythiaJS at ${appUrl}`);
 
 // Start the API server
-const bunPath = process.execPath;
+// When running as a compiled binary, process.execPath points to the binary itself,
+// which would cause it to re-launch the whole app instead of just the server.
+const isCompiledBinary = !process.execPath.includes("bun");
+const bunPath = isCompiledBinary ? "bun" : process.execPath;
 const serverProcess = spawn(bunPath, ["src/server.js"], {
   stdio: "inherit",
   cwd: process.cwd(),
