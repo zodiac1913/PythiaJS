@@ -18,95 +18,15 @@
  */
 // תהילתו. לא שלי
 
-import { spawn, execSync, execFileSync } from "node:child_process";
-import net from "node:net";
+import { spawn, execFileSync } from "node:child_process";
 import { Webview, SizeHint } from "webview-bun";
 
-const DEFAULT_PORT = 3737;
-const MAX_PORT_ATTEMPTS = 25;
-
-function canBindPort(port) {
-  return new Promise((resolve) => {
-    const tester = net.createServer();
-
-    tester.once('error', () => {
-      resolve(false);
-    });
-
-    tester.once('listening', () => {
-      tester.close(() => resolve(true));
-    });
-
-    tester.listen(port, '127.0.0.1');
-  });
-}
-
-async function findAvailablePort(startPort) {
-  for (let offset = 0; offset < MAX_PORT_ATTEMPTS; offset++) {
-    const candidate = startPort + offset;
-    if (await canBindPort(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(`No free port found in range ${startPort}-${startPort + MAX_PORT_ATTEMPTS - 1}`);
-}
-
-const selectedPort = await findAvailablePort(DEFAULT_PORT);
+// Start the API server in-process (required for compiled binaries)
+const { server } = await import("./server.js");
+const selectedPort = server.port;
 const appUrl = `http://localhost:${selectedPort}`;
 const browserFallbackUrl = `${appUrl}/?mode=fallback`;
 console.log(`Starting PythiaJS at ${appUrl}`);
-
-// Start the API server
-// When running as a compiled binary, process.execPath points to the binary itself,
-// which would cause it to re-launch the whole app instead of just the server.
-const isCompiledBinary = !process.execPath.includes("bun");
-const bunPath = isCompiledBinary ? "bun" : process.execPath;
-const serverProcess = spawn(bunPath, ["src/server.js"], {
-  stdio: "inherit",
-  cwd: process.cwd(),
-  env: {
-    ...process.env,
-    PYTHIA_PORT: String(selectedPort)
-  }
-});
-
-// Exit main process if server dies (e.g. shutdown endpoint called)
-serverProcess.on('exit', () => {
-  process.exit(0);
-});
-
-// Wait for server to actually be ready
-async function waitForServer(port, timeoutMs = 15000, intervalMs = 200) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const ready = await new Promise((resolve) => {
-      const sock = net.createConnection({ host: '127.0.0.1', port }, () => {
-        sock.destroy();
-        resolve(true);
-      });
-      sock.on('error', () => resolve(false));
-    });
-    if (ready) return;
-    await Bun.sleep(intervalMs);
-  }
-  throw new Error(`Server did not start within ${timeoutMs}ms`);
-}
-
-await waitForServer(selectedPort);
-
-function stopServerProcess() {
-  try {
-    if (process.platform === 'win32') {
-      execSync(`taskkill /pid ${serverProcess.pid} /T /F`, { stdio: 'ignore' });
-      return;
-    }
-
-    serverProcess.kill('SIGTERM');
-  } catch {
-    // Server may already be stopped.
-  }
-}
 
 function openBrowser(url) {
   try {
@@ -142,7 +62,6 @@ async function runBrowserFallback(err) {
   }
 
   const shutdown = () => {
-    stopServerProcess();
     process.exit(0);
   };
 
@@ -190,8 +109,7 @@ try {
   view.navigate(appUrl);
   view.run();
 
-  // Cleanup - if we get here (webview closed), kill server if still running
-  stopServerProcess();
+  // Cleanup - if we get here (webview closed), exit
   process.exit(0);
 } catch (err) {
   await runBrowserFallback(err);

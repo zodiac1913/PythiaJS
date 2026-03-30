@@ -442,6 +442,7 @@ function startServerWithFallback(preferredPort) {
 
 const preferredPort = resolvePreferredPort();
 const server = startServerWithFallback(preferredPort);
+export { server };
 
 console.log(`API server running on http://localhost:${server.port}`);
 console.log(`API server running on http://127.0.0.1:${server.port}`);
