@@ -17,61 +17,9 @@
 */
 // תהילתו. לא שלי
 
-import { readFileSync } from "fs";
-import { execFileSync } from "child_process";
+import { execFileSync } from "node:child_process";
 import { Webview, SizeHint } from "webview-bun";
-import { connectDB } from "./db/index.js";
-import { handleMessage, register } from "./ipc.js";
-import { logQuery, getHistory } from "./db/sqlite.js";
-import { addConnection, getConnections, executeQuery, testConnection } from "./db/connections.js";
-
-await connectDB();
-
-register("runQuery", async ({ text, connection }) => {
-  try {
-    logQuery(text, connection);
-    const rows = await executeQuery(connection, text);
-    return { rows };
-  } catch (err) {
-    return { error: err.message };
-  }
-});
-
-register("getHistory", () => getHistory());
-
-register("addConnection", async ({ name, type, config }) => {
-  return new Promise((resolve) => {
-    setImmediate(async () => {
-      try {
-        const id = `${type}_${Date.now()}`;
-        await addConnection(id, name, type, config);
-        resolve({ success: true });
-      } catch (err) {
-        resolve({ success: false, error: err.message });
-      }
-    });
-  });
-});
-
-register("testConnection", async ({ type, config }) => {
-  return new Promise((resolve) => {
-    setImmediate(async () => {
-      try {
-        console.log("testConnection handler started");
-        const result = await testConnection(type, config);
-        console.log("testConnection result:", result);
-        resolve(result);
-      } catch (err) {
-        console.error("testConnection error:", err);
-        resolve({ success: false, error: err.message });
-      }
-    });
-  });
-});
-
-register("getConnections", () => getConnections());
-
-const html = readFileSync("src/ui/index.html", "utf-8");
+import { server } from "./server.js";
 
 function getScreenResolution() {
   const fallback = { width: 1920, height: 1080 };
@@ -108,15 +56,9 @@ view.size = {
   hint: SizeHint.NONE
 };
 
-// IPC binding
-view.bind("ipc", async (raw) => {
-  console.log("IPC received:", raw);
-  const result = await handleMessage(raw);
-  console.log("IPC response:", result);
-  return result;
-});
-
-view.navigate(`data:text/html,${encodeURIComponent(html)}`);
+const appUrl = `http://127.0.0.1:${server.port}`;
+console.log(`Opening WebView at ${appUrl}`);
+view.navigate(appUrl);
 view.run();
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
