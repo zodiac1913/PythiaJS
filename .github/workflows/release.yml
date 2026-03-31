@@ -94,6 +94,7 @@ jobs:
           }
 
           $env:PYTHIA_NO_BROWSER = "1"
+          $env:PYTHIA_BROWSER_MODE = "1"
           $env:PYTHIA_PORT = "$testPort"
           $workDir = (Resolve-Path "release").Path
           $stdoutLog = Join-Path $workDir "smoke-stdout.log"
