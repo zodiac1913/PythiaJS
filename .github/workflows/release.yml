@@ -46,43 +46,6 @@ jobs:
       - name: Build executable
         run: bun build --compile index.js --outfile dist/${{ matrix.exe_name }}
 
-      - name: Smoke test compiled binary
-        shell: pwsh
-        run: |
-          $testPort = 48731
-          $exePath = (Resolve-Path "dist/${{ matrix.exe_name }}").Path
-          if (-not $IsWindows) {
-            chmod +x $exePath
-          }
-
-          $env:PYTHIA_NO_BROWSER = "1"
-          $env:PYTHIA_PORT = "$testPort"
-          $proc = Start-Process -FilePath $exePath -PassThru
-
-          try {
-            $ready = $false
-            for ($i = 0; $i -lt 30; $i++) {
-              Start-Sleep -Milliseconds 500
-              try {
-                $resp = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$testPort/api/getConnections" -TimeoutSec 2
-                if ($resp.StatusCode -eq 200) {
-                  $ready = $true
-                  break
-                }
-              } catch {
-                # Keep retrying until timeout.
-              }
-            }
-
-            if (-not $ready) {
-              throw "Compiled binary smoke test failed: API did not become ready on port $testPort"
-            }
-          } finally {
-            if ($proc -and -not $proc.HasExited) {
-              Stop-Process -Id $proc.Id -Force
-            }
-          }
-
       - name: Stage release files
         shell: pwsh
         run: |
@@ -121,6 +84,43 @@ jobs:
           - WebView runtime must be available on the target OS.
           "@ | Set-Content "release/RUN.txt"
 
+      - name: Smoke test staged binary
+        shell: pwsh
+        run: |
+          $testPort = 48731
+          $exePath = (Resolve-Path "release/${{ matrix.exe_name }}").Path
+          if (-not $IsWindows) {
+            chmod +x $exePath
+          }
+
+          $env:PYTHIA_NO_BROWSER = "1"
+          $env:PYTHIA_PORT = "$testPort"
+          $proc = Start-Process -FilePath $exePath -WorkingDirectory (Resolve-Path "release").Path -PassThru
+
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                $resp = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$testPort/api/getConnections" -TimeoutSec 2
+                if ($resp.StatusCode -eq 200) {
+                  $ready = $true
+                  break
+                }
+              } catch {
+                # Keep retrying until timeout.
+              }
+            }
+
+            if (-not $ready) {
+              throw "Staged binary smoke test failed: API did not become ready on port $testPort"
+            }
+          } finally {
+            if ($proc -and -not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
+
       - name: Package zip
         shell: pwsh
         run: |
@@ -149,18 +149,22 @@ jobs:
           path: release-assets
 
       - name: Verify at least one artifact exists
+        id: artifact_check
         shell: bash
         run: |
           shopt -s nullglob
           files=(release-assets/*.zip)
           if [ ${#files[@]} -eq 0 ]; then
             echo "No build artifacts were produced. Skipping release publish."
-            exit 1
+            echo "has_artifacts=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "has_artifacts=true" >> "$GITHUB_OUTPUT"
           echo "Artifacts to publish:"
           ls -1 release-assets/*.zip
 
       - name: Publish release assets
+        if: steps.artifact_check.outputs.has_artifacts == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*.zip
