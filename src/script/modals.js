@@ -320,12 +320,12 @@ export function showAddConnectionModal() {
     const type = document.getElementById('dbType').value;
     let config = {};
     if (type === 'sqlite') {
-      config.file = document.getElementById('file').value;
+      config.file = document.getElementById('file').value.trim();
     } else {
-      config.host = document.getElementById('host').value;
+      config.host = document.getElementById('host').value.trim();
       config.port = Number.parseInt(document.getElementById('port').value, 10);
-      config.database = document.getElementById('database').value;
-      config.username = document.getElementById('username').value;
+      config.database = document.getElementById('database').value.trim();
+      config.username = document.getElementById('username').value.trim();
       config.password = document.getElementById('password').value;
       if (type === 'mssql') {
         config.encrypt = document.getElementById('encrypt')?.checked || false;

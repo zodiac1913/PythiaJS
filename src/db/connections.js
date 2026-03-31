@@ -99,9 +99,108 @@ export function getConnection(id) {
   return connections.get(id) || connections.get('default');
 }
 
+function normalizeExternalConfig(type, config = {}) {
+  if (type === 'sqlite') {
+    return {
+      ...config,
+      file: typeof config.file === 'string' ? config.file.trim() : config.file
+    };
+  }
+
+  const normalized = {
+    ...config,
+    host: typeof config.host === 'string' ? config.host.trim() : config.host,
+    database: typeof config.database === 'string' ? config.database.trim() : config.database,
+    username: typeof config.username === 'string' ? config.username.trim() : config.username,
+    port: Number.isFinite(config.port) ? config.port : Number.parseInt(config.port, 10)
+  };
+
+  if (!Number.isFinite(normalized.port)) {
+    normalized.port = type === 'postgres' ? 5432 : 1433;
+  }
+
+  return normalized;
+}
+
+function buildMssqlPoolConfig(config) {
+  const base = {
+    server: config.host,
+    port: config.port,
+    database: config.database,
+    options: {
+      encrypt: config.encrypt || false,
+      trustServerCertificate: config.trustServerCertificate !== false,
+      enableArithAbort: true
+    }
+  };
+
+  const username = typeof config.username === 'string' ? config.username.trim() : '';
+  const hasDomainStyleUser = username.includes('\\');
+
+  if (hasDomainStyleUser) {
+    const [domain, ...userParts] = username.split('\\');
+    const userName = userParts.join('\\').trim();
+    if (domain && userName) {
+      return {
+        ...base,
+        authentication: {
+          type: 'ntlm',
+          options: {
+            domain,
+            userName,
+            password: config.password || ''
+          }
+        }
+      };
+    }
+  }
+
+  return {
+    ...base,
+    user: username,
+    password: config.password || ''
+  };
+}
+
+async function createClientForConnection(conn, normalizedConfig, connId) {
+  if (conn.type === 'sqlite') {
+    return new Database(normalizedConfig.file);
+  }
+
+  if (conn.type === 'postgres') {
+    return postgres({
+      host: normalizedConfig.host,
+      port: normalizedConfig.port,
+      database: normalizedConfig.database,
+      username: normalizedConfig.username,
+      password: normalizedConfig.password
+    });
+  }
+
+  if (conn.type === 'mssql') {
+    console.log('Creating MSSQL connection pool with config:', {
+      server: normalizedConfig.host,
+      port: normalizedConfig.port,
+      database: normalizedConfig.database,
+      user: normalizedConfig.username,
+      hasPassword: !!normalizedConfig.password,
+      authMode: normalizedConfig.username?.includes('\\') ? 'ntlm' : 'sql'
+    });
+    const pool = new sql.ConnectionPool(buildMssqlPoolConfig(normalizedConfig));
+    console.log('Connecting to MSSQL pool...');
+    await pool.connect();
+    console.log('MSSQL connection successful');
+    logEntry('info', 'connection', 'MSSQL connected', null, connId);
+    return pool;
+  }
+
+  return null;
+}
+
 export async function executeQuery(connId, query) {
   console.log('executeQuery called with connId:', connId);
   const conn = getConnection(connId);
+  const normalizedConfig = normalizeExternalConfig(conn.type, conn.config);
   console.log('Found connection:', conn ? 'yes' : 'no', conn ? conn.type : 'N/A');
 
   await ensureSingleExternalConnection(connId);
@@ -109,46 +208,12 @@ export async function executeQuery(connId, query) {
   // Lazy connect
   if (!conn.client) {
     console.log('Creating new connection client for type:', conn.type);
-    if (conn.type === 'sqlite') {
-      conn.client = new Database(conn.config.file);
-    } else if (conn.type === 'postgres') {
-      conn.client = postgres({
-        host: conn.config.host,
-        port: conn.config.port || 5432,
-        database: conn.config.database,
-        username: conn.config.username,
-        password: conn.config.password
-      });
-    } else if (conn.type === 'mssql') {
-      console.log('Creating MSSQL connection pool with config:', {
-        server: conn.config.host,
-        port: conn.config.port || 1433,
-        database: conn.config.database,
-        user: conn.config.username,
-        hasPassword: !!conn.config.password
-      });
-      try {
-        const pool = new sql.ConnectionPool({
-          server: conn.config.host,
-          port: conn.config.port || 1433,
-          database: conn.config.database,
-          user: conn.config.username,
-          password: conn.config.password,
-          options: { 
-            encrypt: conn.config.encrypt || false, 
-            trustServerCertificate: conn.config.trustServerCertificate !== false
-          }
-        });
-        console.log('Connecting to MSSQL pool...');
-        await pool.connect();
-        console.log('MSSQL connection successful');
-        logEntry('info', 'connection', 'MSSQL connected', null, connId);
-        conn.client = pool;
-      } catch (error) {
-        console.error('MSSQL connection failed:', error);
-        logEntry('error', 'connection', 'MSSQL connection failed: ' + error.message, error.stack, connId);
-        throw error;
-      }
+    try {
+      conn.client = await createClientForConnection(conn, normalizedConfig, connId);
+    } catch (error) {
+      console.error('Connection failed:', error);
+      logEntry('error', 'connection', `${conn.type.toUpperCase()} connection failed: ${error.message}`, error.stack, connId);
+      throw error;
     }
   }
   
@@ -166,31 +231,22 @@ export async function executeQuery(connId, query) {
 
 export async function testConnection(type, config) {
   console.log("testConnection function called", type);
+  const normalizedConfig = normalizeExternalConfig(type, config);
   return Promise.race([
     (async () => {
       try {
         console.log("Starting connection test...");
         if (type === 'sqlite') {
-          const db = new Database(config.file);
+          const db = new Database(normalizedConfig.file);
           db.query("SELECT 1").all();
           db.close();
         } else if (type === 'postgres') {
-          const pg = postgres({ ...config, port: config.port || 5432 });
+          const pg = postgres({ ...normalizedConfig, port: normalizedConfig.port });
           await pg`SELECT 1`;
           await pg.end();
         } else if (type === 'mssql') {
           console.log("Creating MSSQL pool...");
-          const pool = new sql.ConnectionPool({
-            server: config.host,
-            port: config.port || 1433,
-            database: config.database,
-            user: config.username,
-            password: config.password,
-            options: { 
-              encrypt: config.encrypt || false, 
-              trustServerCertificate: config.trustServerCertificate !== false
-            }
-          });
+          const pool = new sql.ConnectionPool(buildMssqlPoolConfig(normalizedConfig));
           console.log("Connecting to MSSQL...");
           await pool.connect();
           console.log("Connected! Running query...");
