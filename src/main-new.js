@@ -24,6 +24,8 @@ import net from "node:net";
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.endsWith("bun.exe");
+const envPort = Number.parseInt(process.env.PYTHIA_PORT || '', 10);
+const preferredPort = (Number.isFinite(envPort) && envPort > 0) ? envPort : DEFAULT_PORT;
 
 // ── If launched with --server flag, just run the server and exit ──
 if (process.argv.includes("--server")) {
@@ -120,7 +122,7 @@ function getScreenResolution() {
 }
 
 // ── Start the server as a separate process ──
-const selectedPort = await findAvailablePort(DEFAULT_PORT);
+const selectedPort = await findAvailablePort(preferredPort);
 const appUrl = `http://localhost:${selectedPort}`;
 console.log(`Starting PythiaJS at ${appUrl}`);
 
