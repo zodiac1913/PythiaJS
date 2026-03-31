@@ -124,6 +124,7 @@ function getScreenResolution() {
 // ── Start the server as a separate process ──
 const selectedPort = await findAvailablePort(preferredPort);
 const appUrl = `http://localhost:${selectedPort}`;
+const appUrlDirect = `http://127.0.0.1:${selectedPort}`;
 console.log(`Starting PythiaJS at ${appUrl}`);
 
 const serverArgs = isCompiledBinary
@@ -131,10 +132,14 @@ const serverArgs = isCompiledBinary
   : ["src/server.js"];              // dev mode: run server.js with bun
 
 const serverProcess = spawn(process.execPath, serverArgs, {
-  stdio: "inherit",
+  stdio: "pipe",
   cwd: process.cwd(),
   env: { ...process.env, PYTHIA_PORT: String(selectedPort) }
 });
+
+// Forward server output to console
+serverProcess.stdout.on('data', (data) => process.stdout.write(data));
+serverProcess.stderr.on('data', (data) => process.stderr.write(data));
 
 serverProcess.on('exit', () => process.exit(0));
 await waitForServer(selectedPort);
@@ -150,7 +155,7 @@ try {
     height: Math.floor(height * 0.8),
     hint: SizeHint.NONE
   };
-  view.navigate(appUrl);
+  view.navigate(appUrlDirect);
   view.run();
   usedWebview = true;
   stopServerProcess(serverProcess);
