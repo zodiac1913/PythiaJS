@@ -18,13 +18,21 @@
  */
 // תהילתו. לא שלי
 
-import { spawn, execSync } from "node:child_process";
+import { spawn, execSync, execFileSync } from "node:child_process";
 import net from "node:net";
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.endsWith("bun.exe");
-const noBrowserOpen = process.env.PYTHIA_NO_BROWSER === '1';
+
+// ── If launched with --server flag, just run the server and exit ──
+if (process.argv.includes("--server")) {
+  await import("./server.js");
+  // Keep alive — server handles its own lifecycle
+  await new Promise(() => {});
+}
+
+// ── Otherwise, this is the main UI process ──
 
 function canBindPort(port) {
   return new Promise((resolve) => {
@@ -91,65 +99,80 @@ function stopServerProcess(serverProcess) {
   }
 }
 
-function setupShutdown(handler) {
-  process.on('SIGINT', handler);
-  process.on('SIGTERM', handler);
+function getScreenResolution() {
+  const fallback = { width: 1920, height: 1080 };
+  try {
+    const script = "Add-Type -AssemblyName System.Windows.Forms; $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; Write-Output ([string]::Concat($screen.Width, ',', $screen.Height))";
+    const output = execFileSync("powershell", ["-NoProfile", "-Command", script], {
+      encoding: "utf-8",
+      windowsHide: true
+    }).trim();
+    const [widthRaw, heightRaw] = output.split(",");
+    const width = Number.parseInt(widthRaw, 10);
+    const height = Number.parseInt(heightRaw, 10);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      return { width, height };
+    }
+  } catch {
+    // Use fallback below when display detection is unavailable.
+  }
+  return fallback;
 }
 
-function maybeOpenBrowser(url) {
-  if (noBrowserOpen) {
-    console.log(`Browser auto-open disabled. Open this URL manually: ${url}`);
-    return;
-  }
+// ── Start the server as a separate process ──
+const selectedPort = await findAvailablePort(DEFAULT_PORT);
+const appUrl = `http://localhost:${selectedPort}`;
+console.log(`Starting PythiaJS at ${appUrl}`);
 
-  if (openBrowser(url)) {
-    console.log('Attempted to open your default browser automatically.');
-  } else {
-    console.log(`Could not auto-open browser. Open this URL manually: ${url}`);
-  }
-}
+const serverArgs = isCompiledBinary
+  ? ["--server"]                    // compiled binary: re-launch self with --server flag
+  : ["src/server.js"];              // dev mode: run server.js with bun
 
-if (isCompiledBinary) {
-  // ── Compiled binary mode: run server in-process, open browser ──
-  const { server } = await import("./server.js");
-  const selectedPort = server.port;
-  const appUrl = `http://localhost:${selectedPort}`;
-  console.log(`Starting PythiaJS at ${appUrl}`);
-  maybeOpenBrowser(appUrl);
+const serverProcess = spawn(process.execPath, serverArgs, {
+  stdio: "inherit",
+  cwd: process.cwd(),
+  env: { ...process.env, PYTHIA_PORT: String(selectedPort) }
+});
 
-  const shutdown = () => process.exit(0);
-  setupShutdown(shutdown);
+serverProcess.on('exit', () => process.exit(0));
+await waitForServer(selectedPort);
 
-  // Keep process alive
-  await new Promise(() => {});
-} else {
-  // ── Dev mode: spawn server as separate process, open browser ──
-
-  const selectedPort = await findAvailablePort(DEFAULT_PORT);
-  const appUrl = `http://localhost:${selectedPort}`;
-  console.log(`Starting PythiaJS at ${appUrl}`);
-
-  const bunPath = process.execPath;
-  const serverProcess = spawn(bunPath, ["src/server.js"], {
-    stdio: "inherit",
-    cwd: process.cwd(),
-    env: { ...process.env, PYTHIA_PORT: String(selectedPort) }
-  });
-
-  serverProcess.on('exit', () => process.exit(0));
-  await waitForServer(selectedPort);
-
-  maybeOpenBrowser(appUrl);
-
-  const shutdown = () => {
-    stopServerProcess(serverProcess);
-    process.exit(0);
+// ── Try webview first, fall back to browser ──
+let usedWebview = false;
+try {
+  const { Webview, SizeHint } = await import("webview-bun");
+  const { width, height } = getScreenResolution();
+  const view = new Webview(false, undefined);
+  view.size = {
+    width: Math.floor(width * 0.8),
+    height: Math.floor(height * 0.8),
+    hint: SizeHint.NONE
   };
-  setupShutdown(shutdown);
-
-  // Keep process alive
-  await new Promise(() => {});
+  view.navigate(appUrl);
+  view.run();
+  usedWebview = true;
+  stopServerProcess(serverProcess);
+  process.exit(0);
+} catch (err) {
+  console.error('WebView not available, falling back to browser mode.');
+  if (err?.message) console.error('WebView error:', err.message);
 }
+
+// ── Browser fallback ──
+console.log(`Open this URL in your browser: ${appUrl}`);
+if (openBrowser(appUrl)) {
+  console.log('Attempted to open your default browser automatically.');
+}
+
+const shutdown = () => {
+  stopServerProcess(serverProcess);
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+// Keep process alive
+await new Promise(() => {});
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! S.D.G !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
