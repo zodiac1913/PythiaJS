@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate } from "./migrate.js";
@@ -13,8 +14,36 @@ const baseDbPath = runningFromCompiledBinary
   ? path.resolve(path.dirname(process.execPath), "src", "db", "base", "pythia.base.db")
   : path.resolve(moduleDir, "base", "pythia.base.db");
 
+function getUserDataDir() {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA;
+    if (localAppData) {
+      return path.resolve(localAppData, "PythiaJS");
+    }
+    return path.resolve(os.homedir(), "AppData", "Local", "PythiaJS");
+  }
+
+  if (process.platform === "darwin") {
+    return path.resolve(os.homedir(), "Library", "Application Support", "PythiaJS");
+  }
+
+  const xdgDataHome = process.env.XDG_DATA_HOME;
+  if (xdgDataHome) {
+    return path.resolve(xdgDataHome, "PythiaJS");
+  }
+  return path.resolve(os.homedir(), ".local", "share", "PythiaJS");
+}
+
 function resolveRuntimeDbPath(file) {
-  return path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
+  if (path.isAbsolute(file)) {
+    return file;
+  }
+
+  if (runningFromCompiledBinary) {
+    return path.resolve(getUserDataDir(), file);
+  }
+
+  return path.resolve(process.cwd(), file);
 }
 
 function ensureSqliteDatabaseFile(file) {
@@ -34,6 +63,7 @@ function ensureSqliteDatabaseFile(file) {
 
 export async function connectSqlite(file) {
   const runtimeDbPath = ensureSqliteDatabaseFile(file);
+  console.log(`Using SQLite database at: ${runtimeDbPath}`);
   db = new Database(runtimeDbPath);
   await migrate("sqlite", (sql) => db.run(sql));
   
