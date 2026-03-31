@@ -18,12 +18,13 @@
  */
 // תהילתו. לא שלי
 
-import { spawn, execSync, execFileSync } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import net from "node:net";
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.endsWith("bun.exe");
+const noBrowserOpen = process.env.PYTHIA_NO_BROWSER === '1';
 
 function canBindPort(port) {
   return new Promise((resolve) => {
@@ -62,26 +63,6 @@ function openBrowser(url) {
   }
 }
 
-function getScreenResolution() {
-  const fallback = { width: 1920, height: 1080 };
-  try {
-    const script = "Add-Type -AssemblyName System.Windows.Forms; $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; Write-Output ([string]::Concat($screen.Width, ',', $screen.Height))";
-    const output = execFileSync("powershell", ["-NoProfile", "-Command", script], {
-      encoding: "utf-8",
-      windowsHide: true
-    }).trim();
-    const [widthRaw, heightRaw] = output.split(",");
-    const width = Number.parseInt(widthRaw, 10);
-    const height = Number.parseInt(heightRaw, 10);
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-      return { width, height };
-    }
-  } catch {
-    // Use fallback below when display detection is unavailable.
-  }
-  return fallback;
-}
-
 async function waitForServer(port, timeoutMs = 15000, intervalMs = 200) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -110,31 +91,42 @@ function stopServerProcess(serverProcess) {
   }
 }
 
+function setupShutdown(handler) {
+  process.on('SIGINT', handler);
+  process.on('SIGTERM', handler);
+}
+
+function maybeOpenBrowser(url) {
+  if (noBrowserOpen) {
+    console.log(`Browser auto-open disabled. Open this URL manually: ${url}`);
+    return;
+  }
+
+  if (openBrowser(url)) {
+    console.log('Attempted to open your default browser automatically.');
+  } else {
+    console.log(`Could not auto-open browser. Open this URL manually: ${url}`);
+  }
+}
+
 if (isCompiledBinary) {
   // ── Compiled binary mode: run server in-process, open browser ──
   const { server } = await import("./server.js");
   const selectedPort = server.port;
   const appUrl = `http://localhost:${selectedPort}`;
   console.log(`Starting PythiaJS at ${appUrl}`);
-  console.log(`Open this URL in your browser: ${appUrl}`);
-
-  if (openBrowser(appUrl)) {
-    console.log('Attempted to open your default browser automatically.');
-  }
+  maybeOpenBrowser(appUrl);
 
   const shutdown = () => process.exit(0);
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  setupShutdown(shutdown);
 
   // Keep process alive
   await new Promise(() => {});
 } else {
-  // ── Dev mode: spawn server as separate process, use webview ──
-  const { Webview, SizeHint } = await import("webview-bun");
+  // ── Dev mode: spawn server as separate process, open browser ──
 
   const selectedPort = await findAvailablePort(DEFAULT_PORT);
   const appUrl = `http://localhost:${selectedPort}`;
-  const browserFallbackUrl = `${appUrl}/?mode=fallback`;
   console.log(`Starting PythiaJS at ${appUrl}`);
 
   const bunPath = process.execPath;
@@ -147,31 +139,16 @@ if (isCompiledBinary) {
   serverProcess.on('exit', () => process.exit(0));
   await waitForServer(selectedPort);
 
-  const { width, height } = getScreenResolution();
+  maybeOpenBrowser(appUrl);
 
-  try {
-    const view = new Webview(false, undefined);
-    view.size = {
-      width: Math.floor(width * 0.8),
-      height: Math.floor(height * 0.8),
-      hint: SizeHint.NONE
-    };
-    view.navigate(appUrl);
-    view.run();
+  const shutdown = () => {
     stopServerProcess(serverProcess);
     process.exit(0);
-  } catch (err) {
-    console.error('WebView startup failed. Falling back to browser mode.');
-    if (err?.message) console.error('WebView error:', err.message);
-    console.error(`Open this URL in your browser: ${browserFallbackUrl}`);
-    if (openBrowser(browserFallbackUrl)) {
-      console.log('Attempted to open your default browser automatically.');
-    }
-    const shutdown = () => { stopServerProcess(serverProcess); process.exit(0); };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-    await new Promise(() => {});
-  }
+  };
+  setupShutdown(shutdown);
+
+  // Keep process alive
+  await new Promise(() => {});
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
