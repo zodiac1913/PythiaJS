@@ -95,12 +95,25 @@ jobs:
 
           $env:PYTHIA_NO_BROWSER = "1"
           $env:PYTHIA_PORT = "$testPort"
-          $proc = Start-Process -FilePath $exePath -WorkingDirectory (Resolve-Path "release").Path -PassThru
+          $workDir = (Resolve-Path "release").Path
+          $stdoutLog = Join-Path $workDir "smoke-stdout.log"
+          $stderrLog = Join-Path $workDir "smoke-stderr.log"
+          if (Test-Path $stdoutLog) { Remove-Item $stdoutLog -Force }
+          if (Test-Path $stderrLog) { Remove-Item $stderrLog -Force }
+
+          $proc = Start-Process -FilePath $exePath -WorkingDirectory $workDir -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
 
           try {
             $ready = $false
-            for ($i = 0; $i -lt 30; $i++) {
+            for ($i = 0; $i -lt 120; $i++) {
               Start-Sleep -Milliseconds 500
+
+              if ($proc.HasExited) {
+                $stdout = (Test-Path $stdoutLog) ? (Get-Content $stdoutLog -Raw) : ''
+                $stderr = (Test-Path $stderrLog) ? (Get-Content $stderrLog -Raw) : ''
+                throw "Staged binary exited early with code $($proc.ExitCode)`nSTDOUT:`n$stdout`nSTDERR:`n$stderr"
+              }
+
               try {
                 $resp = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$testPort/api/getConnections" -TimeoutSec 2
                 if ($resp.StatusCode -eq 200) {
@@ -113,7 +126,9 @@ jobs:
             }
 
             if (-not $ready) {
-              throw "Staged binary smoke test failed: API did not become ready on port $testPort"
+              $stdout = (Test-Path $stdoutLog) ? (Get-Content $stdoutLog -Raw) : ''
+              $stderr = (Test-Path $stderrLog) ? (Get-Content $stderrLog -Raw) : ''
+              throw "Staged binary smoke test failed: API did not become ready on port $testPort`nSTDOUT:`n$stdout`nSTDERR:`n$stderr"
             }
           } finally {
             if ($proc -and -not $proc.HasExited) {
