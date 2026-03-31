@@ -112,6 +112,8 @@ function normalizeExternalConfig(type, config = {}) {
     host: typeof config.host === 'string' ? config.host.trim() : config.host,
     database: typeof config.database === 'string' ? config.database.trim() : config.database,
     username: typeof config.username === 'string' ? config.username.trim() : config.username,
+    authMode: typeof config.authMode === 'string' ? config.authMode.trim().toLowerCase() : config.authMode,
+    domain: typeof config.domain === 'string' ? config.domain.trim() : config.domain,
     port: Number.isFinite(config.port) ? config.port : Number.parseInt(config.port, 10)
   };
 
@@ -136,23 +138,37 @@ function buildMssqlPoolConfig(config) {
 
   const username = typeof config.username === 'string' ? config.username.trim() : '';
   const hasDomainStyleUser = username.includes('\\');
+  const explicitAuthMode = config.authMode === 'ntlm' || config.authMode === 'sql' ? config.authMode : null;
+  const authMode = explicitAuthMode || (hasDomainStyleUser ? 'ntlm' : 'sql');
 
-  if (hasDomainStyleUser) {
-    const [domain, ...userParts] = username.split('\\');
-    const userName = userParts.join('\\').trim();
-    if (domain && userName) {
-      return {
-        ...base,
-        authentication: {
-          type: 'ntlm',
-          options: {
-            domain,
-            userName,
-            password: config.password || ''
-          }
-        }
-      };
+  if (authMode === 'ntlm') {
+    let domain = typeof config.domain === 'string' ? config.domain.trim() : '';
+    let userName = username;
+
+    if (hasDomainStyleUser) {
+      const [parsedDomain, ...userParts] = username.split('\\');
+      const parsedUserName = userParts.join('\\').trim();
+      if (parsedDomain && parsedUserName) {
+        domain = domain || parsedDomain;
+        userName = parsedUserName;
+      }
     }
+
+    if (!domain || !userName) {
+      throw new Error(String.raw`NTLM auth requires a domain and username. Use DOMAIN\username or fill the Domain field.`);
+    }
+
+    return {
+      ...base,
+      authentication: {
+        type: 'ntlm',
+        options: {
+          domain,
+          userName,
+          password: config.password || ''
+        }
+      }
+    };
   }
 
   return {
@@ -160,6 +176,69 @@ function buildMssqlPoolConfig(config) {
     user: username,
     password: config.password || ''
   };
+}
+
+function getEffectiveMssqlAuthMode(config = {}) {
+  if (config.authMode === 'ntlm' || config.authMode === 'sql') {
+    return config.authMode;
+  }
+  const username = typeof config.username === 'string' ? config.username.trim() : '';
+  return username.includes('\\') ? 'ntlm' : 'sql';
+}
+
+function getMssqlErrorDetails(error) {
+  if (!error) {
+    return null;
+  }
+
+  const info = error.originalError?.info;
+  if (!info) {
+    return null;
+  }
+
+  return {
+    number: info.number,
+    state: info.state,
+    class: info.class,
+    serverName: info.serverName,
+    procName: info.procName,
+    lineNumber: info.lineNumber
+  };
+}
+
+function buildConnectionError(error, connType) {
+  if (connType !== 'mssql') {
+    return error;
+  }
+
+  const details = getMssqlErrorDetails(error);
+  if (!details) {
+    return error;
+  }
+
+  const detailSummary = `MSSQL ${error.code || 'ERROR'} number=${details.number} state=${details.state} class=${details.class} server=${details.serverName || 'unknown'}`;
+  const wrapped = new Error(`${error.message} (${detailSummary})`);
+  wrapped.cause = error;
+  wrapped.code = error.code;
+  wrapped.details = details;
+  return wrapped;
+}
+
+function buildMssqlAuditDetail(config = {}, authMode = 'sql', outcome = 'attempt', extra = {}) {
+  const payload = {
+    outcome,
+    host: config.host || null,
+    port: Number.isFinite(config.port) ? config.port : null,
+    database: config.database || null,
+    username: config.username || null,
+    authMode,
+    domain: authMode === 'ntlm' ? (config.domain || null) : null,
+    encrypt: !!config.encrypt,
+    trustServerCertificate: config.trustServerCertificate !== false,
+    ...extra
+  };
+
+  return JSON.stringify(payload);
 }
 
 async function createClientForConnection(conn, normalizedConfig, connId) {
@@ -178,18 +257,34 @@ async function createClientForConnection(conn, normalizedConfig, connId) {
   }
 
   if (conn.type === 'mssql') {
+    const effectiveAuthMode = getEffectiveMssqlAuthMode(normalizedConfig);
     console.log('Creating MSSQL connection pool with config:', {
       server: normalizedConfig.host,
       port: normalizedConfig.port,
       database: normalizedConfig.database,
       user: normalizedConfig.username,
       hasPassword: !!normalizedConfig.password,
-      authMode: normalizedConfig.username?.includes('\\') ? 'ntlm' : 'sql'
+      authMode: effectiveAuthMode,
+      hasDomain: !!normalizedConfig.domain
     });
+    logEntry(
+      'info',
+      'connection',
+      'MSSQL connect attempt',
+      buildMssqlAuditDetail(normalizedConfig, effectiveAuthMode, 'attempt'),
+      connId
+    );
     const pool = new sql.ConnectionPool(buildMssqlPoolConfig(normalizedConfig));
     console.log('Connecting to MSSQL pool...');
     await pool.connect();
     console.log('MSSQL connection successful');
+    logEntry(
+      'info',
+      'connection',
+      'MSSQL connect success',
+      buildMssqlAuditDetail(normalizedConfig, effectiveAuthMode, 'success'),
+      connId
+    );
     logEntry('info', 'connection', 'MSSQL connected', null, connId);
     return pool;
   }
@@ -211,9 +306,27 @@ export async function executeQuery(connId, query) {
     try {
       conn.client = await createClientForConnection(conn, normalizedConfig, connId);
     } catch (error) {
-      console.error('Connection failed:', error);
-      logEntry('error', 'connection', `${conn.type.toUpperCase()} connection failed: ${error.message}`, error.stack, connId);
-      throw error;
+      const enrichedError = buildConnectionError(error, conn.type);
+      console.error('Connection failed:', enrichedError);
+      if (conn.type === 'mssql') {
+        const effectiveAuthMode = getEffectiveMssqlAuthMode(normalizedConfig);
+        logEntry(
+          'error',
+          'connection',
+          'MSSQL connect failure',
+          buildMssqlAuditDetail(normalizedConfig, effectiveAuthMode, 'failure', {
+            code: enrichedError.code || null,
+            mssqlNumber: enrichedError.details?.number || null,
+            mssqlState: enrichedError.details?.state || null,
+            mssqlClass: enrichedError.details?.class || null,
+            mssqlServer: enrichedError.details?.serverName || null,
+            message: enrichedError.message
+          }),
+          connId
+        );
+      }
+      logEntry('error', 'connection', `${conn.type.toUpperCase()} connection failed: ${enrichedError.message}`, enrichedError.stack, connId);
+      throw enrichedError;
     }
   }
   
@@ -232,6 +345,7 @@ export async function executeQuery(connId, query) {
 export async function testConnection(type, config) {
   console.log("testConnection function called", type);
   const normalizedConfig = normalizeExternalConfig(type, config);
+  const mssqlAuthMode = type === 'mssql' ? getEffectiveMssqlAuthMode(normalizedConfig) : null;
   return Promise.race([
     (async () => {
       try {
@@ -245,6 +359,12 @@ export async function testConnection(type, config) {
           await pg`SELECT 1`;
           await pg.end();
         } else if (type === 'mssql') {
+          logEntry(
+            'info',
+            'connection',
+            'MSSQL test connect attempt',
+            buildMssqlAuditDetail(normalizedConfig, mssqlAuthMode, 'attempt')
+          );
           console.log("Creating MSSQL pool...");
           const pool = new sql.ConnectionPool(buildMssqlPoolConfig(normalizedConfig));
           console.log("Connecting to MSSQL...");
@@ -254,18 +374,48 @@ export async function testConnection(type, config) {
           console.log("Query done, closing...");
           await pool.close();
           console.log("Closed!");
+          logEntry(
+            'info',
+            'connection',
+            'MSSQL test connect success',
+            buildMssqlAuditDetail(normalizedConfig, mssqlAuthMode, 'success')
+          );
         }
         console.log("Test successful");
         return { success: true };
       } catch (err) {
-        console.error("Test error:", err.message);
-        return { success: false, error: err.message };
+        const enrichedErr = buildConnectionError(err, type);
+        console.error("Test error:", enrichedErr.message);
+        if (type === 'mssql') {
+          logEntry(
+            'error',
+            'connection',
+            'MSSQL test connect failure',
+            buildMssqlAuditDetail(normalizedConfig, mssqlAuthMode, 'failure', {
+              code: enrichedErr.code || null,
+              mssqlNumber: enrichedErr.details?.number || null,
+              mssqlState: enrichedErr.details?.state || null,
+              mssqlClass: enrichedErr.details?.class || null,
+              mssqlServer: enrichedErr.details?.serverName || null,
+              message: enrichedErr.message
+            })
+          );
+        }
+        return { success: false, error: enrichedErr.message };
       }
     })(),
     new Promise((resolve) => {
       console.log("Setting 5s timeout...");
       setTimeout(() => {
         console.log("Timeout reached!");
+        if (type === 'mssql') {
+          logEntry(
+            'error',
+            'connection',
+            'MSSQL test connect timeout',
+            buildMssqlAuditDetail(normalizedConfig, mssqlAuthMode, 'timeout')
+          );
+        }
         resolve({ success: false, error: 'Connection timeout' });
       }, 5000);
     })

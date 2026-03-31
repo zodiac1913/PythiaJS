@@ -129,6 +129,31 @@ export function showConnectionDetailsModal() {
     const saveBtn = modal.querySelector('#detailSave');
     const deleteBtn = modal.querySelector('#detailDelete');
 
+    function getMssqlDetailSecurityFields(config) {
+      const encryptChecked = config.encrypt ? 'checked' : '';
+      const trustCertChecked = config.trustServerCertificate ? 'checked' : '';
+      const mssqlAuthMode = config.authMode === 'ntlm' ? 'ntlm' : 'sql';
+      const mssqlSqlSelected = mssqlAuthMode === 'sql' ? 'selected' : '';
+      const mssqlNtlmSelected = mssqlAuthMode === 'ntlm' ? 'selected' : '';
+      const mssqlDomainValue = config.domain || '';
+      const mssqlDomainDisabled = mssqlAuthMode === 'ntlm' ? '' : 'disabled';
+      return `<div class="mb-3"><label class="form-label">Authentication</label><select id="detailAuthMode" class="form-select" disabled><option value="sql" ${mssqlSqlSelected}>SQL Login</option><option value="ntlm" ${mssqlNtlmSelected}>Windows (NTLM)</option></select></div><div class="mb-3"><label class="form-label">Domain (NTLM)</label><input type="text" id="detailDomain" class="form-control" value="${mssqlDomainValue}" ${mssqlDomainDisabled} readonly></div><div class="form-check mb-2"><input type="checkbox" id="detailEncrypt" class="form-check-input" ${encryptChecked} disabled><label class="form-check-label">Use Encryption</label></div><div class="form-check mb-2"><input type="checkbox" id="detailTrustCert" class="form-check-input" ${trustCertChecked} disabled><label class="form-check-label">Trust Server Certificate</label></div>`;
+    }
+
+    function syncDetailDomainState(isEdit) {
+      if (originalType !== 'mssql') {
+        return;
+      }
+      const authMode = modal.querySelector('#detailAuthMode')?.value || 'sql';
+      const domainInput = modal.querySelector('#detailDomain');
+      if (!domainInput) {
+        return;
+      }
+      const useNtlm = authMode === 'ntlm';
+      domainInput.disabled = !isEdit || !useNtlm;
+      domainInput.readOnly = !isEdit;
+    }
+
     function renderFields(type, config) {
       if (type === 'sqlite') {
         detailFields.innerHTML = `
@@ -138,11 +163,7 @@ export function showConnectionDetailsModal() {
           </div>
         `;
       } else {
-        const encryptChecked = config.encrypt ? 'checked' : '';
-        const trustCertChecked = config.trustServerCertificate ? 'checked' : '';
-        const mssqlSecurityFields = type === 'mssql'
-          ? `<div class="form-check mb-2"><input type="checkbox" id="detailEncrypt" class="form-check-input" ${encryptChecked} disabled><label class="form-check-label">Use Encryption</label></div><div class="form-check mb-2"><input type="checkbox" id="detailTrustCert" class="form-check-input" ${trustCertChecked} disabled><label class="form-check-label">Trust Server Certificate</label></div>`
-          : '';
+        const mssqlSecurityFields = type === 'mssql' ? getMssqlDetailSecurityFields(config) : '';
         detailFields.innerHTML = `
           <div class="mb-3"><label class="form-label">Host</label><input type="text" id="detailHost" class="form-control" value="${config.host || ''}" readonly></div>
           <div class="mb-3"><label class="form-label">Port</label><input type="number" id="detailPort" class="form-control" value="${config.port || ''}" readonly></div>
@@ -171,6 +192,10 @@ export function showConnectionDetailsModal() {
           el.readOnly = !isEdit;
         }
       });
+      detailFields.querySelectorAll('select').forEach((el) => {
+        el.disabled = !isEdit;
+      });
+      syncDetailDomainState(isEdit);
 
       closeBtn.style.display = isEdit ? 'none' : '';
       editBtn.style.display = isEdit ? 'none' : '';
@@ -193,6 +218,8 @@ export function showConnectionDetailsModal() {
       };
 
       if (originalType === 'mssql') {
+        config.authMode = modal.querySelector('#detailAuthMode')?.value || 'sql';
+        config.domain = modal.querySelector('#detailDomain')?.value?.trim() || '';
         config.encrypt = !!modal.querySelector('#detailEncrypt')?.checked;
         config.trustServerCertificate = !!modal.querySelector('#detailTrustCert')?.checked;
       }
@@ -209,6 +236,13 @@ export function showConnectionDetailsModal() {
 
     renderFields(originalType, originalConfig);
     setEditMode(false);
+
+    modal.addEventListener('change', (event) => {
+      if (event.target?.id !== 'detailAuthMode') {
+        return;
+      }
+      setEditMode(true);
+    });
 
     closeBtn.onclick = closeModal;
     editBtn.onclick = () => {
@@ -241,6 +275,10 @@ export function showConnectionDetailsModal() {
           }
           if (!Number.isFinite(updatedConfig.port)) {
             setStatus('Port must be a valid number.', true);
+            return;
+          }
+          if (originalType === 'mssql' && updatedConfig.authMode === 'ntlm' && !updatedConfig.domain && !updatedConfig.username.includes('\\')) {
+            setStatus(String.raw`NTLM requires Domain or DOMAIN\username format.`, true);
             return;
           }
         }
@@ -328,6 +366,8 @@ export function showAddConnectionModal() {
       config.username = document.getElementById('username').value.trim();
       config.password = document.getElementById('password').value;
       if (type === 'mssql') {
+        config.authMode = document.getElementById('authMode')?.value || 'sql';
+        config.domain = document.getElementById('domain')?.value?.trim() || '';
         config.encrypt = document.getElementById('encrypt')?.checked || false;
         config.trustServerCertificate = document.getElementById('trustCert')?.checked || false;
       }
@@ -357,8 +397,23 @@ export function showAddConnectionModal() {
         <div class="mb-3"><label class="form-label">Database</label><input type="text" id="database" class="form-control"></div>
         <div class="mb-3"><label class="form-label">Username</label><input type="text" id="username" class="form-control"></div>
         <div class="mb-3"><label class="form-label">Password</label><div class="input-group"><input type="password" id="password" class="form-control" aria-label="Database password" title="Database password"><button class="btn btn-outline-secondary" type="button" id="togglePw" aria-label="Show password" title="Show password"><i class="bi bi-eye" aria-hidden="true"></i></button></div></div>
-        ${type === 'mssql' ? '<div class="form-check mb-3"><input type="checkbox" id="encrypt" class="form-check-input"><label class="form-check-label">Use Encryption</label></div><div class="form-check mb-3"><input type="checkbox" id="trustCert" class="form-check-input" checked><label class="form-check-label">Trust Server Certificate</label></div>' : ''}
+        ${type === 'mssql' ? '<div class="mb-3"><label class="form-label">Authentication</label><select id="authMode" class="form-select"><option value="sql" selected>SQL Login</option><option value="ntlm">Windows (NTLM)</option></select></div><div class="mb-3"><label class="form-label">Domain (NTLM)</label><input type="text" id="domain" class="form-control" disabled></div><div class="form-check mb-3"><input type="checkbox" id="encrypt" class="form-check-input"><label class="form-check-label">Use Encryption</label></div><div class="form-check mb-3"><input type="checkbox" id="trustCert" class="form-check-input" checked><label class="form-check-label">Trust Server Certificate</label></div>' : ''}
       `;
+
+      if (type === 'mssql') {
+        const authModeEl = document.getElementById('authMode');
+        const domainEl = document.getElementById('domain');
+        if (authModeEl && domainEl) {
+          const syncDomainState = () => {
+            domainEl.disabled = authModeEl.value !== 'ntlm';
+            if (domainEl.disabled) {
+              domainEl.value = '';
+            }
+          };
+          authModeEl.addEventListener('change', syncDomainState);
+          syncDomainState();
+        }
+      }
     }
   };
   
@@ -411,6 +466,7 @@ export function showAddConnectionModal() {
       const config = getConfigFromForm();
       if (type === 'sqlite' && !config.file) return alert('File path required');
       if (type !== 'sqlite' && (!config.host || !config.database || !config.username)) return alert('Host, Database, and Username are required');
+      if (type === 'mssql' && config.authMode === 'ntlm' && !config.domain && !config.username.includes('\\')) return alert(String.raw`NTLM requires Domain or DOMAIN\username format`);
       
       showStatus('Saving connection...', false);
       await call('/api/addConnection', 'POST', { name, type, config });
