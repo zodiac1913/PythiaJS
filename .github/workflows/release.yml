@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]"
+      - "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9].[0-9]*"
   workflow_dispatch:
 
 permissions:
@@ -60,6 +61,14 @@ jobs:
 
           # Server reads UI assets from src/ui at runtime.
           Copy-Item "src/ui/*" "release/src/ui" -Recurse -Force
+
+          # Server serves script modules at runtime.
+          New-Item -ItemType Directory -Path release/src/script -Force | Out-Null
+          Copy-Item "src/script/*" "release/src/script" -Recurse -Force
+
+          # Base SQLite database for first-run initialization
+          New-Item -ItemType Directory -Path release/src/db/base -Force | Out-Null
+          Copy-Item "src/db/base/pythia.base.db" "release/src/db/base/pythia.base.db" -Force
 
           @"
           PythiaJS
