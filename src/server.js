@@ -20,7 +20,7 @@
 import { connectDB } from "./db/index.js";
 import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, clearLogs } from "./db/sqlite.js";
 import { addConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
@@ -33,6 +33,32 @@ const assetBase = isCompiledBinary ? path.dirname(process.execPath) : process.cw
 function assetPath(relativePath) {
   return path.resolve(assetBase, relativePath);
 }
+
+const RELEASE_VERSION_PATTERN = /^\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$/;
+
+function sanitizeVersion(value) {
+  const candidate = String(value || '').trim();
+  return RELEASE_VERSION_PATTERN.test(candidate) ? candidate : null;
+}
+
+function resolveAppVersion() {
+  const versionFilePath = assetPath('version.txt');
+  const fromEnv = sanitizeVersion(process.env.PYTHIA_VERSION || process.env.GITHUB_REF_NAME);
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  if (existsSync(versionFilePath)) {
+    const fromFile = sanitizeVersion(readFileSync(versionFilePath, 'utf-8'));
+    if (fromFile) {
+      return fromFile;
+    }
+  }
+
+  return 'dev';
+}
+
+const APP_VERSION = resolveAppVersion();
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
@@ -145,12 +171,20 @@ function createServer(port) {
     // Serve the HTML
     if (url.pathname === "/") {
       const html = readFileSync(assetPath("src/ui/index.html"), "utf-8");
-      return new Response(html, {
+      const injectedHtml = html.replace(
+        '</head>',
+        `  <script>globalThis.PYTHIA_VERSION = ${JSON.stringify(APP_VERSION)};</script>\n</head>`
+      );
+      return new Response(injectedHtml, {
         headers: { 
           "Content-Type": "text/html",
           ...corsHeaders
         }
       });
+    }
+
+    if (url.pathname === "/api/version" && req.method === "GET") {
+      return Response.json({ version: APP_VERSION }, { headers: corsHeaders });
     }
     
     if (url.pathname === "/bootstrap-icons.css") {

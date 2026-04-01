@@ -44,7 +44,24 @@ jobs:
         run: bun install
 
       - name: Build executable
-        run: bun build --compile index.js --outfile dist/${{ matrix.exe_name }}
+        shell: pwsh
+        run: |
+          $buildArgs = @(
+            'build'
+            '--compile'
+            'index.js'
+            '--outfile'
+            "dist/${{ matrix.exe_name }}"
+          )
+
+          if ($IsWindows) {
+            $buildArgs += @(
+              '--windows-icon'
+              'src/ui/pic/PythiaJS.ico'
+            )
+          }
+
+          bun @buildArgs
 
       - name: Stage release files
         shell: pwsh
@@ -55,12 +72,21 @@ jobs:
 
           Copy-Item "dist/${{ matrix.exe_name }}" "release/${{ matrix.exe_name }}" -Force
           Copy-Item "config.json" "release/config.json" -Force
+          if ("${{ github.ref_type }}" -eq "tag") {
+            "${{ github.ref_name }}" | Set-Content "release/version.txt"
+          } else {
+            "dev" | Set-Content "release/version.txt"
+          }
           if (Test-Path "pythia.db") {
             Copy-Item "pythia.db" "release/pythia.db" -Force
           }
 
           # Server reads UI assets from src/ui at runtime.
           Copy-Item "src/ui/*" "release/src/ui" -Recurse -Force
+
+          if (-not $IsWindows) {
+            Copy-Item "src/ui/pic/PythiaJSIMG.png" "release/PythiaJS.png" -Force
+          }
 
           # Server serves script modules at runtime.
           New-Item -ItemType Directory -Path release/src/script -Force | Out-Null
@@ -81,7 +107,9 @@ jobs:
 
           Notes:
           - This package expects bundled src/ui assets beside the executable.
+          - Release version is read from version.txt and shown in the app footer.
           - WebView runtime must be available on the target OS.
+          - Linux/macOS bundles include PythiaJS.png at the package root for launcher or app-icon setup.
           "@ | Set-Content "release/RUN.txt"
 
       - name: Smoke test staged binary

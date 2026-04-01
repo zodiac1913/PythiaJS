@@ -1,5 +1,11 @@
 // Shared application state
-export const APP_VERSION = '2026.03.30.3';
+const DEFAULT_APP_VERSION = 'dev';
+
+export const APP_VERSION = typeof globalThis !== 'undefined'
+  && typeof globalThis.PYTHIA_VERSION === 'string'
+  && globalThis.PYTHIA_VERSION.trim()
+    ? globalThis.PYTHIA_VERSION.trim()
+    : DEFAULT_APP_VERSION;
 
 if (typeof globalThis !== 'undefined') {
   globalThis.PYTHIA_VERSION = APP_VERSION;

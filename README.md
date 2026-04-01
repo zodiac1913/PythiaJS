@@ -137,10 +137,12 @@ bun index.js
 ### For maintainers (publishing a release)
 
 1. Push code to `main`.
-2. Create a new date-version tag in `YYYY.MM.DD` format (for example `2026.03.30`).
+2. Create a new date-version tag in `YYYY.MM.DD` or `YYYY.MM.DD.x` format (for example `2026.03.30` or `2026.03.30.3`).
 3. Draft a GitHub Release from that tag.
 4. Add release notes and attach platform build artifacts if available.
 5. Publish the release.
+
+The release workflow stamps the tag value into the packaged app automatically, and that version is shown in the footer inside the app.
 
 ### Suggested Release Notes Template
 
