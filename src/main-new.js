@@ -20,12 +20,18 @@
 
 import { spawn, execSync, execFileSync } from "node:child_process";
 import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { dlopen } from "bun:ffi";
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.endsWith("bun.exe");
 const envPort = Number.parseInt(process.env.PYTHIA_PORT || '', 10);
 const preferredPort = (Number.isFinite(envPort) && envPort > 0) ? envPort : DEFAULT_PORT;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const APP_ICON_PATH = path.join(__dirname, "ui", "pic", "PythiaJS.ico");
 
 // ── If launched with --server flag, just run the server and exit ──
 if (process.argv.includes("--server")) {
@@ -121,10 +127,68 @@ function getScreenResolution() {
   return fallback;
 }
 
+function toWideStringBuffer(value) {
+  const buffer = new Uint16Array(value.length + 1);
+  for (let i = 0; i < value.length; i++) {
+    buffer[i] = Number(value.codePointAt(i) ?? 0);
+  }
+  buffer[value.length] = 0;
+  return buffer;
+}
+
+function setWindowsWebviewIcon(view, iconPath) {
+  if (process.platform !== "win32") return;
+
+  try {
+    const hwnd = view.unsafeWindowHandle;
+    if (!hwnd) return;
+
+    const user32 = dlopen("user32.dll", {
+      LoadImageW: {
+        args: ["ptr", "ptr", "u32", "i32", "i32", "u32"],
+        returns: "ptr"
+      },
+      SendMessageW: {
+        args: ["ptr", "u32", "usize", "isize"],
+        returns: "isize"
+      }
+    });
+
+    const IMAGE_ICON = 1;
+    const LR_LOADFROMFILE = 0x0010;
+    const LR_DEFAULTSIZE = 0x0040;
+    const WM_SETICON = 0x0080;
+    const ICON_SMALL = 0;
+    const ICON_BIG = 1;
+
+    const iconPathWide = toWideStringBuffer(iconPath);
+    const iconHandle = user32.symbols.LoadImageW(
+      null,
+      iconPathWide,
+      IMAGE_ICON,
+      0,
+      0,
+      LR_LOADFROMFILE | LR_DEFAULTSIZE
+    );
+
+    if (!iconHandle) {
+      user32.close();
+      return;
+    }
+
+    user32.symbols.SendMessageW(hwnd, WM_SETICON, ICON_BIG, iconHandle);
+    user32.symbols.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, iconHandle);
+    user32.close();
+  } catch {
+    // If native icon calls fail, continue with default icon.
+  }
+}
+
 // ── Start the server as a separate process ──
 const selectedPort = await findAvailablePort(preferredPort);
 const appUrl = `http://localhost:${selectedPort}`;
 const appUrlDirect = `http://127.0.0.1:${selectedPort}`;
+const appUrlWebview = `${appUrlDirect}?host=webview`;
 console.log(`Starting PythiaJS at ${appUrl}`);
 
 const serverArgs = isCompiledBinary
@@ -143,6 +207,8 @@ serverProcess.stderr.on('data', (data) => process.stderr.write(data));
 
 serverProcess.on('exit', () => process.exit(0));
 await waitForServer(selectedPort);
+console.log(`Manual URL (localhost): ${appUrl}`);
+console.log(`Manual URL (127.0.0.1): ${appUrlDirect}`);
 
 // ── Try webview first, fall back to browser ──
 let usedWebview = false;
@@ -150,25 +216,26 @@ try {
   const { Webview, SizeHint } = await import("webview-bun");
   const { width, height } = getScreenResolution();
   const view = new Webview(false, undefined);
+  setWindowsWebviewIcon(view, APP_ICON_PATH);
   view.size = {
     width: Math.floor(width * 0.8),
     height: Math.floor(height * 0.8),
     hint: SizeHint.NONE
   };
-  view.navigate(appUrlDirect);
+  view.navigate(appUrlWebview);
   view.run();
   usedWebview = true;
-  stopServerProcess(serverProcess);
-  process.exit(0);
 } catch (err) {
   console.error('WebView not available, falling back to browser mode.');
   if (err?.message) console.error('WebView error:', err.message);
 }
 
 // ── Browser fallback ──
-console.log(`Open this URL in your browser: ${appUrl}`);
-if (openBrowser(appUrl)) {
-  console.log('Attempted to open your default browser automatically.');
+if (!usedWebview) {
+  console.log(`Open this URL in your browser: ${appUrl}`);
+  if (openBrowser(appUrl)) {
+    console.log('Attempted to open your default browser automatically.');
+  }
 }
 
 const shutdown = () => {

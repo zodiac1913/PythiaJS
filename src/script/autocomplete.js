@@ -236,7 +236,7 @@ export function showFieldSelector(table, fields, onSelect) {
           ).join('')}
         </div>
         <div class="field-controls" style="margin-top:15px;text-align:center;">
-          <small style="color:#666;">Use WASD or arrow keys to navigate, Space to select/deselect, Enter to confirm</small><br>
+          <small style="color:#666;">Use arrow keys to navigate, Space to select/deselect, Enter to confirm</small><br>
           <button class="btn btn-primary btn-sm" id="confirmFields" title="Confirm selected fields" aria-label="Confirm selected fields" style="margin-top:10px;">Confirm Selection</button>
           <button class="btn btn-secondary btn-sm" id="cancelFields" title="Cancel field selection" aria-label="Cancel field selection" style="margin-top:10px;margin-left:10px;">Cancel</button>
         </div>
@@ -297,24 +297,29 @@ export function showFieldSelector(table, fields, onSelect) {
       return;
     }
 
+    // Keep typing behavior intact when focus is in the field search input.
+    if (searchInput && document.activeElement === searchInput && (e.key === ' ' || e.key === 'Enter')) {
+      return;
+    }
+
     if (visibleFieldItems.length === 0 && e.key !== 'Escape') {
       return;
     }
 
     const columns = 2;
-    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') {
+    if (e.key === 'ArrowUp') {
       e.preventDefault();
       selectedIndex = Math.max(0, selectedIndex - columns);
       updateSelection();
-    } else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') {
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       selectedIndex = Math.min(visibleFieldItems.length - 1, selectedIndex + columns);
       updateSelection();
-    } else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+    } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       selectedIndex = Math.max(0, selectedIndex - 1);
       updateSelection();
-    } else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       selectedIndex = Math.min(fieldItems.length - 1, selectedIndex + 1);
       updateSelection();
@@ -434,15 +439,22 @@ export function showTableSelector(onSelect) {
       return;
     }
 
+    // Keep table search input typing/caret behavior intact.
+    if (searchInput && document.activeElement === searchInput) {
+      if (e.key !== 'Escape') {
+        return;
+      }
+    }
+
     if (visibleItems.length === 0 && e.key !== 'Escape') {
       return;
     }
 
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+    if (e.key === 'ArrowUp') {
       e.preventDefault();
       selectedIndex = Math.max(0, selectedIndex - 1);
       updateHighlight();
-    } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       selectedIndex = Math.min(visibleItems.length - 1, selectedIndex + 1);
       updateHighlight();

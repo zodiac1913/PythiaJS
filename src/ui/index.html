@@ -24,15 +24,23 @@
     .toolbar-exports{justify-content:flex-end}
     .toolbar-exports .btn-group{margin-left:0 !important}
     .query-search-wrap{position:relative}
+    .query-label-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+    .query-label-row .form-check{margin:0}
+    .query-label-row .form-check-input{cursor:pointer}
+    .query-label-row .form-check-label{font-size:.92rem;color:#1f2937;cursor:pointer}
     .query-search-results{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ccc;border-top:none;max-height:220px;overflow-y:auto;z-index:1100;display:none}
     .query-search-item{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .query-search-item.active,.query-search-item:hover{background:#0d6efd;color:#fff}
     #answer{background:rgba(255,255,255,.72) !important}
     #queryProgress{height:1rem}
     .fallback-banner{display:none;background:rgba(255,243,205,0.95);color:#664d03;border:1px solid #ffecb5;padding:10px 14px;margin:12px 16px 0;border-radius:8px;font-size:.95rem}
+    .runtime-banner{display:none}
     .fallback-url{display:inline-block;margin-left:6px;word-break:break-all;color:#664d03;font-weight:600}
+    .runtime-url{display:inline-block;margin-left:6px;word-break:break-all;color:#fff;font-weight:600}
     .fallback-copy{margin-left:8px;border:1px solid #d3bf8a;background:#fff3cd;color:#664d03;border-radius:6px;padding:2px 8px;font-size:.85rem;cursor:pointer}
     .app-footer{position:fixed;right:12px;bottom:10px;z-index:1200;font-size:.75rem;color:#fff;background:rgba(0,0,0,.55);padding:4px 10px;border-radius:999px;line-height:1;backdrop-filter:blur(2px)}
+    .app-footer-left{left:12px;right:auto;display:flex;align-items:center;gap:4px;max-width:48vw;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .app-footer-left .runtime-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(48vw - 90px)}
     @media (max-width:991.98px){
       .toolbar-grid{grid-template-columns:1fr}
       .toolbar-exports{justify-content:flex-start}
@@ -77,16 +85,22 @@
 
 
         <div class="mb-3" style="position:relative">
-          <label for="q" class="form-label">Enter Query:</label>
+          <div class="query-label-row mb-1">
+            <label for="q" class="form-label mb-0">Enter Query:</label>
+            <div class="form-check form-switch" title="Toggle automatic autocomplete suggestions" aria-label="Toggle automatic autocomplete suggestions">
+              <input class="form-check-input" type="checkbox" id="autocompleteToggle" checked>
+              <label class="form-check-label" for="autocompleteToggle">Autocomplete</label>
+            </div>
+          </div>
           <div class="mb-1">
-            <small class="help-text">
+            <small id="queryHelpText" class="help-text">
               <i class="bi bi-lightbulb" aria-hidden="true"></i> 
               Normal SQL: <code>SELECT fields FROM table WHERE...</code> | 
               Postgres-style: <code>table select fields where...</code> | 
-              Ctrl+Space: Field selector with WASD navigation
+              Ctrl+Space: Field selector with arrow-key navigation
             </small>
           </div>
-          <textarea id="q" class="form-control" rows="5" placeholder="Type your SQL query here..." title="SQL query editor" aria-label="SQL query editor"></textarea>
+          <textarea id="q" class="form-control" rows="5" placeholder="Type your SQL query here..." title="SQL query editor" aria-label="SQL query editor" aria-describedby="queryHelpText" aria-controls="autocomplete"></textarea>
           <div id="autocomplete" class="autocomplete" aria-label="SQL autocomplete suggestions"></div>
         </div>
 
@@ -97,7 +111,7 @@
           </div>
           <div id="ButtonGroup2" class="toolbar-cell">
             <div class="query-search-wrap">
-              <input id="historySearch" class="form-control" type="text" placeholder="Search saved queries for this connection..." autocomplete="off" aria-label="Search saved queries" title="Search saved queries">
+              <input id="historySearch" class="form-control" type="text" placeholder="Search saved queries for this connection..." autocomplete="off" aria-label="Search saved queries" title="Search saved queries" aria-controls="historySearchResults">
               <div id="historySearchResults" class="query-search-results" aria-label="Saved query search results"></div>
             </div>
           </div>
@@ -131,6 +145,10 @@
     <footer class="app-footer" aria-label="Application version">
       <span id="appVersion"></span>
     </footer>
+    <output id="runtimeBanner" class="app-footer app-footer-left runtime-banner" aria-live="polite" aria-label="Local URL notice">
+      <span>Local:</span>
+      <a id="runtimeUrl" class="runtime-url" href="about:blank" target="_blank" rel="noopener">local URL</a>
+    </output>
 
   <!-- Load modular JavaScript -->
   <script type="module" src="/script/event-handlers.js"></script>

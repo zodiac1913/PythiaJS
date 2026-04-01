@@ -20,6 +20,31 @@ import {
 
 const historyQueryCache = {};
 let historyRequestController = null;
+const AUTOCOMPLETE_PREF_KEY = 'pythia.autocomplete.enabled';
+
+function isAutocompleteEnabled() {
+  const toggle = document.getElementById('autocompleteToggle');
+  return toggle ? toggle.checked : true;
+}
+
+function applyAutocompletePreference() {
+  const toggle = document.getElementById('autocompleteToggle');
+  const ac = document.getElementById('autocomplete');
+  if (!toggle) {
+    return;
+  }
+
+  const saved = globalThis.localStorage?.getItem(AUTOCOMPLETE_PREF_KEY);
+  toggle.checked = saved !== 'off';
+
+  toggle.addEventListener('change', () => {
+    globalThis.localStorage?.setItem(AUTOCOMPLETE_PREF_KEY, toggle.checked ? 'on' : 'off');
+    if (!toggle.checked && ac) {
+      ac.style.display = 'none';
+      ac.innerHTML = '';
+    }
+  });
+}
 
 function renderAppVersion() {
   const versionBadge = document.getElementById('appVersion');
@@ -71,6 +96,32 @@ function renderFallbackModeBanner() {
       }
     };
   }
+
+  banner.style.display = 'block';
+}
+
+function renderRuntimeUrlBanner() {
+  const params = new URLSearchParams(globalThis.location.search);
+  if (params.get('mode') === 'fallback') {
+    return;
+  }
+
+  const banner = document.getElementById('runtimeBanner');
+  const runtimeUrlLink = document.getElementById('runtimeUrl');
+  if (!banner || !runtimeUrlLink) {
+    return;
+  }
+
+  const isLocalHost = globalThis.location.hostname === 'localhost' || globalThis.location.hostname === '127.0.0.1';
+  if (!isLocalHost) {
+    return;
+  }
+
+  const runtimeUrl = globalThis.location.href;
+  runtimeUrlLink.textContent = runtimeUrl;
+  runtimeUrlLink.href = runtimeUrl;
+  runtimeUrlLink.title = runtimeUrl;
+  runtimeUrlLink.setAttribute('aria-label', `Local URL ${runtimeUrl}`);
 
   banner.style.display = 'block';
 }
@@ -416,6 +467,7 @@ function setRunQueryUiState(isRunning, runBtn, progress, answer, progressText) {
 }
 
 export function initializeEventHandlers() {
+  applyAutocompletePreference();
   attachHistoryAutocomplete();
 
   // Query textarea - keydown handler
@@ -431,6 +483,11 @@ export function initializeEventHandlers() {
   
   // Query textarea - input handler (autocomplete)
   document.getElementById('q').addEventListener('input', async function(e) {
+    if (!isAutocompleteEnabled()) {
+      document.getElementById('autocomplete').style.display = 'none';
+      return;
+    }
+
     const text = e.target.value;
     const cursorPos = e.target.selectionStart;
     
@@ -475,7 +532,7 @@ export function initializeEventHandlers() {
         e.target.focus();
         
         // If user just selected "SELECT" as the first word, trigger guided SQL flow
-        if (selectedText === 'SELECT' && e.target.value.match(/^\s*SELECT\s*$/i)) {
+        if (isAutocompleteEnabled() && selectedText === 'SELECT' && e.target.value.match(/^\s*SELECT\s*$/i)) {
           triggerSelectFlow(e.target);
         }
       };
@@ -484,6 +541,10 @@ export function initializeEventHandlers() {
   
   // Detect when user manually types "SELECT " as the FIRST word (not postgres-style)
   document.getElementById('q').addEventListener('keyup', function(e) {
+    if (!isAutocompleteEnabled()) {
+      return;
+    }
+
     if (e.key !== ' ') return;
     const text = e.target.value;
     // Only trigger if SELECT is the very first word (standard SQL, not postgres-style)
@@ -494,7 +555,9 @@ export function initializeEventHandlers() {
   
   // Query textarea - blur handler
   document.getElementById('q').addEventListener('blur', () => {
-    setTimeout(() => document.getElementById('autocomplete').style.display = 'none', 200);
+    setTimeout(() => {
+      document.getElementById('autocomplete').style.display = 'none';
+    }, 200);
   });
   
   // Format selector
@@ -576,6 +639,7 @@ export function initializeEventHandlers() {
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
   renderAppVersion();
+  renderRuntimeUrlBanner();
   renderFallbackModeBanner();
   loadConnections();
   initializeEventHandlers();
@@ -591,5 +655,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Shutdown server when webview window closes
 window.addEventListener('beforeunload', function() {
+  const params = new URLSearchParams(globalThis.location.search);
+  if (params.get('host') !== 'webview') {
+    return;
+  }
+
   navigator.sendBeacon('/api/shutdown', '{}');
 });
