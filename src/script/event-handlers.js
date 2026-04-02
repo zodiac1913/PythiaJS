@@ -1,3 +1,16 @@
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ /* 
+ * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class event-handlers.js
+ * @description Sets up and manages all UI event handlers for PythiaJS,
+ *  including query execution, autocomplete, and modal interactions.
+ */
+
 // Event Handlers - wires up all UI interactions
 // This file imports from modules and sets up event listeners
 
@@ -6,6 +19,7 @@ import { loadAllSchemas, parseQueryContext, showFieldSelector, showTableSelector
 import { displayResult, saveAs } from './display.js';
 import { showConnectionDetailsModal, showAddConnectionModal, showSaveFileModal } from './modals.js';
 import { escapeFieldIdentifier, formatTableIdentifier, resolveSchemaTableKey } from './db-identifiers.js';
+import './sml/smlReactiveButton.js';
 import { 
   APP_VERSION,
   currentConnection, 
@@ -20,7 +34,86 @@ import {
 
 const historyQueryCache = {};
 let historyRequestController = null;
+let historyViewVisible = false;
 const AUTOCOMPLETE_PREF_KEY = 'pythia.autocomplete.enabled';
+const SERVER_HEALTH_INTERVAL_MS = 3000;
+let serverHealthTimer = null;
+let serverDownVisible = false;
+
+function setHistoryToggleState(isVisible) {
+  const historyBtn = document.getElementById('history');
+  if (!historyBtn) {
+    historyViewVisible = !!isVisible;
+    return;
+  }
+
+  historyViewVisible = !!isVisible;
+  historyBtn.textContent = historyViewVisible ? 'Hide History' : 'Show History';
+  historyBtn.title = historyViewVisible ? 'Hide query history' : 'Show query history';
+  historyBtn.setAttribute('aria-label', historyViewVisible ? 'Hide History - query history' : 'Show History - query history');
+}
+
+function getServerDownElements() {
+  return {
+    overlay: document.getElementById('serverDownOverlay'),
+    urlText: document.getElementById('serverDownUrl')
+  };
+}
+
+function showServerDownOverlay() {
+  const { overlay, urlText } = getServerDownElements();
+  if (!overlay) {
+    return;
+  }
+
+  if (urlText) {
+    urlText.textContent = `URL: ${globalThis.location.origin}`;
+  }
+
+  overlay.style.display = 'flex';
+  serverDownVisible = true;
+}
+
+function hideServerDownOverlay() {
+  const { overlay } = getServerDownElements();
+  if (!overlay) {
+    return;
+  }
+
+  overlay.style.display = 'none';
+  serverDownVisible = false;
+}
+
+async function checkServerHealth() {
+  try {
+    const response = await fetch('/api/health', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+
+    if (response.ok) {
+      if (serverDownVisible) {
+        hideServerDownOverlay();
+      }
+      return true;
+    }
+  } catch {
+    // Handled by showing overlay below.
+  }
+
+  showServerDownOverlay();
+  return false;
+}
+
+function startServerHealthMonitor() {
+  if (serverHealthTimer) {
+    clearInterval(serverHealthTimer);
+  }
+
+  checkServerHealth();
+  serverHealthTimer = setInterval(checkServerHealth, SERVER_HEALTH_INTERVAL_MS);
+}
 
 function isAutocompleteEnabled() {
   const toggle = document.getElementById('autocompleteToggle');
@@ -120,8 +213,8 @@ function renderRuntimeUrlBanner() {
   const runtimeUrl = globalThis.location.href;
   runtimeUrlLink.textContent = runtimeUrl;
   runtimeUrlLink.href = runtimeUrl;
-  runtimeUrlLink.title = runtimeUrl;
-  runtimeUrlLink.setAttribute('aria-label', `Local URL ${runtimeUrl}`);
+  runtimeUrlLink.title = `To open an additional window, click here: ${runtimeUrl}`;
+  runtimeUrlLink.setAttribute('aria-label', `To open an additional window, click here: ${runtimeUrl}`);
 
   banner.style.display = 'block';
 }
@@ -572,6 +665,20 @@ export function initializeEventHandlers() {
   
   // Current connection info badge
   document.getElementById('currentConnInfo').onclick = showConnectionDetailsModal;
+
+  const clearQueryButton = document.getElementById('clearQuery');
+  if (clearQueryButton) {
+    clearQueryButton.onclick = () => {
+      const queryBox = document.getElementById('q');
+      const autocomplete = document.getElementById('autocomplete');
+      queryBox.value = '';
+      queryBox.focus();
+      if (autocomplete) {
+        autocomplete.style.display = 'none';
+        autocomplete.innerHTML = '';
+      }
+    };
+  }
   
   // Run query button
   document.getElementById("run").onclick = async () => {
@@ -606,9 +713,11 @@ export function initializeEventHandlers() {
       setLastResult(result);
       displayResult(result);
       answer.style.display = 'block';
+      setHistoryToggleState(false);
     } catch (err) {
       answer.innerHTML = `<p class="text-danger">Error: ${err.message}</p>`;
       answer.style.display = 'block';
+      setHistoryToggleState(false);
     } finally {
       setRunQueryUiState(false, runBtn, progress, answer, progressText);
     }
@@ -616,10 +725,22 @@ export function initializeEventHandlers() {
   
   // History button
   document.getElementById("history").onclick = async () => {
+    const answer = document.getElementById('answer');
+    if (!answer) {
+      return;
+    }
+
+    if (historyViewVisible) {
+      answer.style.display = 'none';
+      setHistoryToggleState(false);
+      return;
+    }
+
     const rows = await call(`/api/getHistory?connection=${encodeURIComponent(currentConnection)}`);
     setLastResult({ rows });
     displayResult(lastResult);
-    document.getElementById('answer').style.display = 'block';
+    answer.style.display = 'block';
+    setHistoryToggleState(true);
   };
   
   // Save file button
@@ -641,8 +762,26 @@ document.addEventListener('DOMContentLoaded', function() {
   renderAppVersion();
   renderRuntimeUrlBanner();
   renderFallbackModeBanner();
+  startServerHealthMonitor();
   loadConnections();
   initializeEventHandlers();
+
+  const retryButton = document.getElementById('retryServerConnection');
+  if (retryButton) {
+    retryButton.addEventListener('click', async () => {
+      await checkServerHealth();
+    });
+  }
+
+  document.addEventListener('pythia-server-unreachable', () => {
+    showServerDownOverlay();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkServerHealth();
+    }
+  });
   
   // Add connection button needs special handling since it's dynamically created
   document.addEventListener('click', function(e) {
@@ -662,3 +801,8 @@ window.addEventListener('beforeunload', function() {
 
   navigator.sendBeacon('/api/shutdown', '{}');
 });
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! S.D.G !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

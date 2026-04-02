@@ -1,21 +1,15 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//     *          |¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯|       †          _____          ↑
-//   _____        |  o o o o o o  |      /|\        (     )         ↑
-//  /  ^  \       | o o o o o o o |     / | \      (       )       / \
-// /_/___\_\      |_______________|    /  |  \      (]¯¯¯[)       /   \
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/* eslint-disable no-undef */
-/* eslint-disable no-console */
-/*!
- * main --- Main entry point for PythiaJS desktop application
- * MIT Licensed Copyright (c) 2026 Dominic Roche
+ /* 
  * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
- * Published by: Dominic Roche 3/12/2026
- * @class main
-*/
-// תהילתו. לא שלי
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class main.js
+ * @description Primary main process startup logic for app initialization and runtime configuration.
+ */
+
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";

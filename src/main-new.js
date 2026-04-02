@@ -1,27 +1,22 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//     *          |¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯|       †          _____          ↑
-//   _____        |  o o o o o o  |      /|\        (     )         ↑
-//  /  ^  \       | o o o o o o o |     / | \      (       )       / \
-// /_/___\_\      |_______________|    /  |  \      (]¯¯¯[)       /   \
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/* eslint-disable no-undef */
-/* eslint-disable no-console */
-/*!
- * main-new.js --- Main entry point for PythiaJS desktop application (new version)
- * MIT Licensed Copyright (c) 2026 Dominic Roche
+ /* 
  * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
- * Published by: Dominic Roche 3/12/2026
- * @class mainNew
- * @extends {HTMLElement}
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class main-new.js
+ * @description Alternate main startup entry for launching PythiaJS runtime and UI shell.
+ * (New version)
  */
-// תהילתו. לא שלי
+
 
 import { spawn, execSync, execFileSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dlopen } from "bun:ffi";
 
 const DEFAULT_PORT = 3737;
@@ -76,6 +71,46 @@ function openBrowser(url) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function getRuntimeBaseDir() {
+  return isCompiledBinary ? path.dirname(process.execPath) : process.cwd();
+}
+
+function writeStartupErrorReport(err, attemptedUrl) {
+  const reportPath = path.join(getRuntimeBaseDir(), "pythia-startup-error.txt");
+  const message = String(err?.message || err || "Unknown startup error");
+  const report = [
+    "PythiaJS startup failed before the UI could open.",
+    "",
+    `Timestamp: ${new Date().toISOString()}`,
+    `Platform: ${process.platform}`,
+    `Process path: ${process.execPath}`,
+    `Working directory: ${process.cwd()}`,
+    `Attempted URL: ${attemptedUrl}`,
+    "",
+    "Error:",
+    message,
+    "",
+    "Checklist:",
+    "1) Ensure WebView2 Runtime is installed on Windows:",
+    "   https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+    "2) Ensure all release files were extracted together:",
+    "   - executable",
+    "   - config.json",
+    "   - version.txt",
+    "   - src/ui/...",
+    "   - src/db/base/pythia.base.db",
+    "3) Try launching from PowerShell to capture console output.",
+    ""
+  ].join("\n");
+
+  try {
+    writeFileSync(reportPath, report, "utf-8");
+    return reportPath;
+  } catch {
+    return null;
   }
 }
 
@@ -205,8 +240,28 @@ const serverProcess = spawn(process.execPath, serverArgs, {
 serverProcess.stdout.on('data', (data) => process.stdout.write(data));
 serverProcess.stderr.on('data', (data) => process.stderr.write(data));
 
+const earlyServerExit = new Promise((_, reject) => {
+  serverProcess.once('exit', (code, signal) => {
+    reject(new Error(`Server exited before startup completed (code=${code ?? 'null'}, signal=${signal ?? 'null'})`));
+  });
+});
+
+try {
+  await Promise.race([waitForServer(selectedPort), earlyServerExit]);
+} catch (err) {
+  console.error('PythiaJS failed to start the local server.');
+  if (err?.message) console.error('Startup error:', err.message);
+
+  const reportPath = writeStartupErrorReport(err, appUrl);
+  if (reportPath) {
+    console.error(`Startup report written to: ${reportPath}`);
+    openBrowser(pathToFileURL(reportPath).href);
+  }
+
+  process.exit(1);
+}
+
 serverProcess.on('exit', () => process.exit(0));
-await waitForServer(selectedPort);
 console.log(`Manual URL (localhost): ${appUrl}`);
 console.log(`Manual URL (127.0.0.1): ${appUrlDirect}`);
 

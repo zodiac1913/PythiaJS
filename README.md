@@ -31,9 +31,11 @@ Notes:
 
 PythiaJS uses your operating system WebView engine to render the UI inside a desktop window.
 
-- Windows: Microsoft Edge WebView2 Runtime
+- Windows: Microsoft Edge WebView2 Runtime https://go.microsoft.com/fwlink/p/?LinkId=2124703
 - Linux: WebKitGTK (or distro-provided WebKit WebView stack)
 - macOS: WKWebView (provided by the OS)
+
+Windows note: PythiaJS does not bundle the WebView2 runtime inside the app executable. The runtime must be installed on the target machine.
 
 
 ## Tech Stack
@@ -105,6 +107,7 @@ Important caveats:
 
 - You still need to provide platform-specific builds (Windows/Linux/macOS).
 - The OS WebView runtime must exist on the target machine.
+- On Windows, install Microsoft Edge WebView2 Runtime before launching the binary: https://go.microsoft.com/fwlink/p/?LinkId=2124703
 - For release quality, test each binary on its target OS before publishing.
 
 Recommended release asset naming:
@@ -121,13 +124,16 @@ Each asset should include:
 - Any required runtime data files (for example starter SQLite DB if you want first-run data)
 - A short `RUN.txt` with launch instructions
 
+Binary users should follow the included `RUN.txt` first, especially on Windows where WebView2 must be installed.
+
 If binaries are not attached yet, users can still run from source using Bun.
 
 ### For users
 
 1. Open the repository `Releases` page.
 2. Download the latest release asset for your platform (if provided).
-3. If no binary assets are attached yet, download `Source code (zip)` and run with Bun:
+3. Windows users: install Microsoft Edge WebView2 Runtime first if it is not already present: https://go.microsoft.com/fwlink/p/?LinkId=2124703
+4. If no binary assets are attached yet, download `Source code (zip)` and run with Bun:
 
 ```bash
 bun install

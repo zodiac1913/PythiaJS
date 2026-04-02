@@ -6,16 +6,16 @@
 //  /  ^  \       | o o o o o o o |     / | \      (       )       / \
 // /_/___\_\      |_______________|    /  |  \      (]¯¯¯[)       /   \
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/* eslint-disable no-undef */
-/* eslint-disable no-console */
-/*!
- * server --- web server for handling API requests from the frontend and interacting with the database
- * MIT Licensed Copyright (c) 2026 Dominic Roche
+ /* 
  * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
- * Published by: Dominic Roche 3/12/2026
- * @class server
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class server.js
+ * @description Hosts HTTP API endpoints, static UI assets, and query/connection 
+ * operations for PythiaJS.
  */
-// תהילתו. לא שלי
+
 
 import { connectDB } from "./db/index.js";
 import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, clearLogs } from "./db/sqlite.js";
@@ -147,7 +147,11 @@ await connectDB();
 
 const bootstrapIcons = readFileSync(assetPath("src/ui/bootstrap-icons.css"), "utf-8");
 const bootstrapIconsFont = readFileSync(assetPath("src/ui/fonts/bootstrap-icons.woff2"));
+const bsPlus = readFileSync(assetPath("src/ui/BSPlus.css"), "utf-8");
+const bootstrapBundleJs = readFileSync(assetPath("src/ui/bootstrap.bundle.min.js"), "utf-8");
 const qBs = readFileSync(assetPath("src/ui/q-bs.css"), "utf-8");
+const smlCss = readFileSync(assetPath("src/script/sml/sml.css"), "utf-8");
+const smlSidebarCss = readFileSync(assetPath("src/script/sml/smlSidebar.css"), "utf-8");
 const bgImage = readFileSync(assetPath("src/ui/pic/PythiaJS-bg.png"));
 
 function createServer(port) {
@@ -186,10 +190,23 @@ function createServer(port) {
     if (url.pathname === "/api/version" && req.method === "GET") {
       return Response.json({ version: APP_VERSION }, { headers: corsHeaders });
     }
+
+    if (url.pathname === "/api/health" && req.method === "GET") {
+      return Response.json({ ok: true, ts: Date.now() }, { headers: corsHeaders });
+    }
     
     if (url.pathname === "/bootstrap-icons.css") {
       return new Response(bootstrapIcons, {
         headers: { 
+          "Content-Type": "text/css",
+          ...corsHeaders
+        }
+      });
+    }
+
+    if (url.pathname === "/BSPlus.css") {
+      return new Response(bsPlus, {
+        headers: {
           "Content-Type": "text/css",
           ...corsHeaders
         }
@@ -204,10 +221,37 @@ function createServer(port) {
         }
       });
     }
+
+    if (url.pathname === "/bootstrap.bundle.min.js") {
+      return new Response(bootstrapBundleJs, {
+        headers: {
+          "Content-Type": "application/javascript",
+          ...corsHeaders
+        }
+      });
+    }
     
     if (url.pathname === "/q-bs.css") {
       return new Response(qBs, {
         headers: { 
+          "Content-Type": "text/css",
+          ...corsHeaders
+        }
+      });
+    }
+
+    if (url.pathname === "/sml/sml.css") {
+      return new Response(smlCss, {
+        headers: {
+          "Content-Type": "text/css",
+          ...corsHeaders
+        }
+      });
+    }
+
+    if (url.pathname === "/sml/smlSidebar.css") {
+      return new Response(smlSidebarCss, {
+        headers: {
           "Content-Type": "text/css",
           ...corsHeaders
         }
@@ -288,6 +332,31 @@ function createServer(port) {
       const eventHandlersJs = readFileSync(assetPath("src/script/event-handlers.js"), "utf-8");
       return new Response(eventHandlersJs, {
         headers: { 
+          "Content-Type": "application/javascript",
+          ...corsHeaders
+        }
+      });
+    }
+
+    if (url.pathname === "/script/smlUtils.js") {
+      const smlUtilsJs = readFileSync(assetPath("src/script/smlUtils.js"), "utf-8");
+      return new Response(smlUtilsJs, {
+        headers: {
+          "Content-Type": "application/javascript",
+          ...corsHeaders
+        }
+      });
+    }
+
+    if (url.pathname.startsWith("/script/sml/") && url.pathname.endsWith(".js")) {
+      const relativeScriptPath = url.pathname.slice(1);
+      if (relativeScriptPath.includes("..")) {
+        return new Response("Not found", { status: 404, headers: corsHeaders });
+      }
+
+      const smlScript = readFileSync(assetPath(`src/${relativeScriptPath}`), "utf-8");
+      return new Response(smlScript, {
+        headers: {
           "Content-Type": "application/javascript",
           ...corsHeaders
         }

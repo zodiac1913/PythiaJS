@@ -1,22 +1,17 @@
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//     *          |¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯|       †          _____          ↑
-//   _____        |  o o o o o o  |      /|\        (     )         ↑
-//  /  ^  \       | o o o o o o o |     / | \      (       )       / \
-// /_/___\_\      |_______________|    /  |  \      (]¯¯¯[)       /   \
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/* eslint-disable no-undef */
-/* eslint-disable no-console */
-/*!
- * ipc.js --- IPC message handling for PythiaJS desktop application
- * MIT Licensed Copyright (c) 2026 Dominic Roche
+ /* 
  * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
- * Published by: Dominic Roche 3/12/2026
- * @class ipc
- * @extends {HTMLElement}
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class ipc.js
+ * @description Handles inter-process communication wiring between app components. 
+ * Provides a simple message-passing interface for invoking registered handlers 
+ * and returning results or errors.
  */
-// תהילתו. לא שלי
+
 
 const handlers = {};
 

@@ -1,11 +1,140 @@
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ /* 
+ * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class connections.js
+ * @description Manages external database connections, secure credential storage, 
+ * lazy clients, and query execution routing.
+ */
+
 import { Database } from "bun:sqlite";
 import postgres from "postgres";
 import sql from "mssql";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { hostname } from "node:os";
 import { logEntry } from "./sqlite.js";
 
 const connections = new Map();
 let metaDb;
 let activeExternalConnId = null;
+
+const CREDENTIAL_FIELDS_BY_TYPE = {
+  postgres: ['username', 'password'],
+  mssql: ['username', 'password']
+};
+
+const ENCRYPTION_MARKER = 'pythia:enc:v1';
+
+let credentialKey;
+
+function getCredentialKey() {
+  if (credentialKey) {
+    return credentialKey;
+  }
+
+  const explicitSecret = typeof process.env.PYTHIA_CREDENTIAL_SECRET === 'string'
+    ? process.env.PYTHIA_CREDENTIAL_SECRET.trim()
+    : '';
+  const localSeed = explicitSecret || [
+    process.env.USERDOMAIN || '',
+    process.env.USERNAME || '',
+    hostname(),
+    process.cwd(),
+    'pythiajs-credentials-v1'
+  ].join('|');
+
+  credentialKey = createHash('sha256').update(localSeed).digest();
+  return credentialKey;
+}
+
+function isEncryptedPayload(value) {
+  return !!value
+    && typeof value === 'object'
+    && value.__pythiaEnc === ENCRYPTION_MARKER
+    && typeof value.iv === 'string'
+    && typeof value.tag === 'string'
+    && typeof value.data === 'string';
+}
+
+function encryptSecretValue(value) {
+  if (typeof value !== 'string' || !value) {
+    return value;
+  }
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getCredentialKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+
+  return {
+    __pythiaEnc: ENCRYPTION_MARKER,
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    data: encrypted.toString('base64')
+  };
+}
+
+function decryptSecretValue(value) {
+  if (!isEncryptedPayload(value)) {
+    return value;
+  }
+
+  try {
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      getCredentialKey(),
+      Buffer.from(value.iv, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(value.tag, 'base64'));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(value.data, 'base64')),
+      decipher.final()
+    ]);
+    return decrypted.toString('utf8');
+  } catch {
+    return value;
+  }
+}
+
+function transformCredentialFields(type, config, transform) {
+  const credentialFields = CREDENTIAL_FIELDS_BY_TYPE[type] || [];
+  if (!credentialFields.length || !config || typeof config !== 'object') {
+    return config;
+  }
+
+  const next = { ...config };
+  for (const field of credentialFields) {
+    if (field in next) {
+      next[field] = transform(next[field]);
+    }
+  }
+
+  return next;
+}
+
+function serializeConfigForStorage(type, config = {}) {
+  return transformCredentialFields(type, config, encryptSecretValue);
+}
+
+function deserializeStoredConfig(type, config = {}) {
+  return transformCredentialFields(type, config, decryptSecretValue);
+}
+
+function hasLegacyPlaintextCredentials(type, config = {}) {
+  const credentialFields = CREDENTIAL_FIELDS_BY_TYPE[type] || [];
+  if (!credentialFields.length || !config || typeof config !== 'object') {
+    return false;
+  }
+
+  return credentialFields.some((field) => {
+    const value = config[field];
+    return typeof value === 'string' && value.length > 0;
+  });
+}
 
 export function initConnectionManager(db) {
   metaDb = db;
@@ -15,20 +144,38 @@ export function initConnectionManager(db) {
 export async function addConnection(id, name, type, config) {
   // Don't create connection yet, just store config
   connections.set(id, { type, client: null, config });
+  const persistedConfig = serializeConfigForStorage(type, config);
   metaDb.run("INSERT OR REPLACE INTO connections (id, name, type, config) VALUES (?, ?, ?, ?)",
-    [id, name, type, JSON.stringify(config)]);
+    [id, name, type, JSON.stringify(persistedConfig)]);
 }
 
 export async function loadConnections() {
   const rows = metaDb.query("SELECT * FROM connections").all();
   for (const row of rows) {
-    const config = JSON.parse(row.config);
+    const persistedConfig = JSON.parse(row.config);
+    if (hasLegacyPlaintextCredentials(row.type, persistedConfig)) {
+      const encryptedConfig = serializeConfigForStorage(row.type, persistedConfig);
+      metaDb.run("UPDATE connections SET config = ? WHERE id = ?", [JSON.stringify(encryptedConfig), row.id]);
+    }
+    const config = deserializeStoredConfig(row.type, persistedConfig);
     connections.set(row.id, { type: row.type, client: null, config });
   }
 }
 
 export function getConnections() {
-  return metaDb.query("SELECT id, name, type, config FROM connections").all();
+  const rows = metaDb.query("SELECT id, name, type, config FROM connections").all();
+  return rows.map((row) => {
+    try {
+      const persistedConfig = JSON.parse(row.config);
+      const config = deserializeStoredConfig(row.type, persistedConfig);
+      return {
+        ...row,
+        config: JSON.stringify(config)
+      };
+    } catch {
+      return row;
+    }
+  });
 }
 
 async function closeClient(conn) {
@@ -79,9 +226,10 @@ export async function updateConnection(id, name, type, config) {
   }
 
   connections.set(id, { type, client: null, config });
+  const persistedConfig = serializeConfigForStorage(type, config);
   metaDb.run(
     "UPDATE connections SET name = ?, type = ?, config = ? WHERE id = ?",
-    [name, type, JSON.stringify(config), id]
+    [name, type, JSON.stringify(persistedConfig), id]
   );
 }
 
@@ -421,3 +569,6 @@ export async function testConnection(type, config) {
     })
   ]);
 }
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! S.D.G !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

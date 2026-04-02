@@ -1,3 +1,16 @@
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! J.J. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ /* 
+ * Et qui me misit, mecum est: non reliquit me solum Pater, quia ego semper quae placita sunt ei, facio!
+ * Published by: Dominic Roche
+ * License: MIT (https://opensource.org/licenses/MIT)
+ * תהילתו. לא שלי
+ * @class api.js
+ * @description Provides API functions for PythiaJS, including connection management
+ *  and query execution.
+ */
+
 // Core API & Connection Functions
 import { currentConnection, allConnections, setCurrentConnection } from './state.js';
 import { updateCurrentConnectionBadge, updateQueryBoxStyling } from './display.js';
@@ -64,6 +77,12 @@ export async function call(endpoint, method = 'GET', body = null, fetchOptions =
     return data;
   } catch (error) {
     console.error('API call failed:', endpoint, error);
+    const message = String(error?.message || '');
+    if (error?.name === 'TypeError' || message.includes('Failed to fetch') || message.includes('NetworkError')) {
+      document.dispatchEvent(new CustomEvent('pythia-server-unreachable', {
+        detail: { endpoint }
+      }));
+    }
     throw error;
   }
 }
@@ -189,3 +208,8 @@ export function selectConnection(connId) {
 
   document.dispatchEvent(new CustomEvent('connection-changed', { detail: { connectionId: connId } }));
 }
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! S.D.G !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
