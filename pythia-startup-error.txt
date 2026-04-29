@@ -1,0 +1,21 @@
+PythiaJS startup failed before the UI could open.
+
+Timestamp: 2026-04-28T10:05:56.987Z
+Platform: darwin
+Process path: /Users/rxjr/.bun/bin/bun
+Working directory: /Users/rxjr/Desktop/Dev/PythiaJS
+Attempted URL: http://localhost:3737
+
+Error:
+Server exited before startup completed (code=1, signal=null)
+
+Checklist:
+1) Ensure WebView2 Runtime is installed on Windows:
+   https://go.microsoft.com/fwlink/p/?LinkId=2124703
+2) Ensure all release files were extracted together:
+   - executable
+   - config.json
+   - version.txt
+   - src/ui/...
+   - src/db/base/pythia.base.db
+3) Try launching from PowerShell to capture console output.

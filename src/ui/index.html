@@ -14,7 +14,7 @@
     #q{background:rgba(255,255,255,.72)}
     .autocomplete{position:absolute;background:white;border:1px solid #ccc;max-height:200px;overflow-y:auto;z-index:1000;display:none}
     .autocomplete div{padding:5px 10px;cursor:pointer}
-    .autocomplete div:hover{background:#0056b3;color:#fff}
+    .autocomplete div:hover,.autocomplete div.active{background:#0056b3;color:#fff}
     .field-selector-modal .field-item.selected{border-color:#007bff !important;background:#e7f3ff !important}
     .help-text{color:#334155}
     .toolbar-grid{display:grid;grid-template-columns:1fr 1.25fr auto;gap:.75rem;align-items:start}
@@ -114,8 +114,9 @@
               Ctrl+Space: Field selector with arrow-key navigation
             </small>
           </div>
-          <textarea id="q" class="form-control" rows="5" placeholder="Type your SQL query here..." title="SQL query editor" aria-label="SQL query editor" aria-describedby="queryHelpText" aria-controls="autocomplete"></textarea>
+          <textarea id="q" class="form-control" rows="5" placeholder="Type your SQL query here..." title="SQL query editor" aria-label="SQL query editor" aria-describedby="queryHelpText autocompleteStatus" aria-controls="autocomplete"></textarea>
           <div id="autocomplete" class="autocomplete" aria-label="SQL autocomplete suggestions"></div>
+          <div id="autocompleteStatus" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
         </div>
 
         <div class="toolbar-grid">

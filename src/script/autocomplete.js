@@ -52,6 +52,30 @@ function trapTabNavigation(e, modal) {
   return false;
 }
 
+function keepModalFocusContained(modal) {
+  const onFocusIn = (event) => {
+    if (!modal.isConnected) {
+      return;
+    }
+
+    if (modal.contains(event.target)) {
+      return;
+    }
+
+    const [firstFocusable] = getFocusableElements(modal);
+    if (firstFocusable) {
+      firstFocusable.focus();
+    } else {
+      modal.focus();
+    }
+  };
+
+  document.addEventListener('focusin', onFocusIn);
+  return () => {
+    document.removeEventListener('focusin', onFocusIn);
+  };
+}
+
 function escapeSelectedFields(selectedFields) {
   const conn = allConnections[currentConnection];
   const dbType = conn ? conn.type : 'sqlite';
@@ -230,7 +254,11 @@ export function showFieldSelector(table, fields, onSelect) {
   const useFieldSearch = tableFields.length > 30;
   
   const modal = document.createElement('div');
-  const closeModal = () => modal.remove();
+  const releaseFocusContainment = keepModalFocusContained(modal);
+  const closeModal = () => {
+    releaseFocusContainment();
+    modal.remove();
+  };
   modal.className = 'field-selector-modal';
   modal.setAttribute('tabindex', '0');
   modal.setAttribute('role', 'dialog');
@@ -239,9 +267,13 @@ export function showFieldSelector(table, fields, onSelect) {
   modal.innerHTML = `
     <div class="field-selector-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;">
       <div class="field-selector" style="background:white;padding:20px;border-radius:8px;max-width:760px;width:92%;max-height:92%;overflow-y:auto;">
-        <h5>Select Fields for ${table}</h5>
-        ${useFieldSearch ? '<input id="fieldSearchInput" type="text" class="form-control form-control-sm" placeholder="Search fields..." aria-label="Search fields" title="Search fields" style="margin:10px 0;">' : ''}
-        <div class="field-list" role="listbox" aria-label="Available fields" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:15px 0;max-height:360px;overflow-y:auto;">
+        <h5 style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <span>Select Fields for ${table}</span>
+          <span id="fieldCountBadge" style="font-size:.8rem;font-weight:600;background:#ecfeff;color:#155e75;border:1px solid #a5f3fc;border-radius:999px;padding:2px 9px;">0 fields</span>
+        </h5>
+        ${useFieldSearch ? '<label for="fieldSearchInput" id="fieldSearchHelp" style="display:block;margin-top:10px;font-size:.9rem;color:#444;">Search box for fields. Type to find your field.</label><input id="fieldSearchInput" type="text" class="form-control form-control-sm" placeholder="Search fields..." aria-label="Search box for fields. Type to find your field." aria-describedby="fieldSearchHelp fieldResultsStatus" title="Search fields" style="margin:6px 0 8px;">' : ''}
+        <div id="fieldResultsStatus" aria-live="polite" aria-atomic="true" style="font-size:.84rem;color:#555;margin:4px 0 8px;"></div>
+        <div id="fieldList" class="field-list" role="listbox" aria-label="Available fields" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 15px;max-height:360px;overflow-y:auto;">
           <div class="field-item ${fields.includes('*') ? 'selected' : ''}" role="option" tabindex="-1" data-field="*" aria-label="All fields" title="All fields" style="padding:10px 12px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#f8f9fa;min-height:42px;line-height:1.35;display:flex;align-items:center;word-break:break-word;">*</div>
           ${tableFields.map(field => 
             `<div class="field-item ${fields.includes(field) ? 'selected' : ''}" role="option" tabindex="-1" data-field="${escapeHtmlText(field)}" title="${escapeHtmlText(field)}" aria-label="Field ${escapeHtmlText(field)}" style="padding:10px 12px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#f8f9fa;min-height:42px;line-height:1.35;display:flex;align-items:center;word-break:break-word;">${escapeHtmlText(field)}</div>`
@@ -259,9 +291,33 @@ export function showFieldSelector(table, fields, onSelect) {
   document.body.appendChild(modal);
   
   const searchInput = modal.querySelector('#fieldSearchInput');
+  const fieldResultsStatus = modal.querySelector('#fieldResultsStatus');
+  const fieldCountBadge = modal.querySelector('#fieldCountBadge');
+  const fieldList = modal.querySelector('#fieldList');
   const fieldItems = Array.from(modal.querySelectorAll('.field-item'));
   let visibleFieldItems = fieldItems;
   let selectedIndex = 0;
+
+  function announceFieldCount() {
+    if (!fieldResultsStatus || !fieldList) {
+      return;
+    }
+
+    const total = fieldItems.length;
+    const visible = visibleFieldItems.length;
+    const term = searchInput ? searchInput.value.trim() : '';
+    const message = term
+      ? `Showing ${visible} of ${total} fields for ${term}.`
+      : `Showing ${visible} fields.`;
+
+    fieldResultsStatus.textContent = message;
+    fieldList.setAttribute('aria-label', `Available fields. ${visible} result${visible === 1 ? '' : 's'}.`);
+    if (fieldCountBadge) {
+      fieldCountBadge.textContent = term
+        ? `${visible} of ${total} fields`
+        : `${visible} fields`;
+    }
+  }
 
   function getSelectedFields() {
     return fieldItems
@@ -282,9 +338,15 @@ export function showFieldSelector(table, fields, onSelect) {
       item.style.color = index === selectedIndex ? 'white' : 'black';
       item.style.borderColor = item.classList.contains('selected') ? '#007bff' : '#ddd';
     });
+
+    const activeItem = visibleFieldItems[selectedIndex];
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
   }
   
   updateSelection();
+  announceFieldCount();
 
   fieldItems.forEach((item) => {
     item.onclick = () => {
@@ -301,6 +363,7 @@ export function showFieldSelector(table, fields, onSelect) {
       });
       selectedIndex = 0;
       updateSelection();
+      announceFieldCount();
     });
   }
   
@@ -333,7 +396,7 @@ export function showFieldSelector(table, fields, onSelect) {
       updateSelection();
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      selectedIndex = Math.min(fieldItems.length - 1, selectedIndex + 1);
+      selectedIndex = Math.min(visibleFieldItems.length - 1, selectedIndex + 1);
       updateSelection();
     } else if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
@@ -375,7 +438,11 @@ export function showTableSelector(onSelect) {
   }
   
   const modal = document.createElement('div');
-  const closeModal = () => modal.remove();
+  const releaseFocusContainment = keepModalFocusContained(modal);
+  const closeModal = () => {
+    releaseFocusContainment();
+    modal.remove();
+  };
   modal.setAttribute('tabindex', '0');
   modal.setAttribute('role', 'dialog');
   modal.setAttribute('aria-modal', 'true');
@@ -383,9 +450,13 @@ export function showTableSelector(onSelect) {
   modal.innerHTML = `
     <div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;">
       <div style="background:white;padding:20px;border-radius:8px;max-width:560px;width:90%;max-height:460px;overflow-y:auto;">
-        <h5>Select Table</h5>
-        ${useSearch ? '<input id="tableSearchInput" type="text" class="form-control form-control-sm" placeholder="Search tables..." aria-label="Search tables" title="Search tables" style="margin:10px 0;">' : ''}
-        <div id="tableList" role="listbox" aria-label="Available tables" style="display:flex;flex-direction:column;gap:6px;margin:15px 0;max-height:300px;overflow-y:auto;">
+        <h5 style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <span>Select Table</span>
+          <span id="tableCountBadge" style="font-size:.8rem;font-weight:600;background:#eef2ff;color:#1f3a8a;border:1px solid #c7d2fe;border-radius:999px;padding:2px 9px;">0 tables</span>
+        </h5>
+        ${useSearch ? '<label for="tableSearchInput" id="tableSearchHelp" style="display:block;margin-top:10px;font-size:.9rem;color:#444;">Search box for tables. Type to find your table.</label><input id="tableSearchInput" type="text" class="form-control form-control-sm" placeholder="Search tables..." aria-label="Search box for tables. Type to find your table." aria-describedby="tableSearchHelp tableResultsStatus" title="Search tables" style="margin:6px 0 8px;">' : ''}
+        <div id="tableResultsStatus" aria-live="polite" aria-atomic="true" style="font-size:.84rem;color:#555;margin:4px 0 8px;"></div>
+        <div id="tableList" role="listbox" aria-label="Available tables" style="display:flex;flex-direction:column;gap:6px;margin:10px 0 15px;max-height:300px;overflow-y:auto;">
           ${tableNames.map(t => 
             `<div class="table-item" role="option" tabindex="-1" data-table="${escapeHtmlText(t)}" title="${escapeHtmlText(t)}" aria-label="Table ${escapeHtmlText(t)}" style="padding:10px 12px;border:1px solid #ddd;border-radius:4px;cursor:pointer;background:#f8f9fa;min-height:42px;line-height:1.35;display:flex;align-items:center;word-break:break-word;">${escapeHtmlText(t)}</div>`
           ).join('')}
@@ -401,9 +472,33 @@ export function showTableSelector(onSelect) {
   document.body.appendChild(modal);
 
   const searchInput = modal.querySelector('#tableSearchInput');
+  const tableResultsStatus = modal.querySelector('#tableResultsStatus');
+  const tableCountBadge = modal.querySelector('#tableCountBadge');
+  const tableList = modal.querySelector('#tableList');
   let items = Array.from(modal.querySelectorAll('.table-item'));
   let visibleItems = items;
   let selectedIndex = 0;
+
+  function announceTableCount() {
+    if (!tableResultsStatus || !tableList) {
+      return;
+    }
+
+    const total = items.length;
+    const visible = visibleItems.length;
+    const term = searchInput ? searchInput.value.trim() : '';
+    const message = term
+      ? `Showing ${visible} of ${total} tables for ${term}.`
+      : `Showing ${visible} tables.`;
+
+    tableResultsStatus.textContent = message;
+    if (tableCountBadge) {
+      tableCountBadge.textContent = term
+        ? `${visible} of ${total} tables`
+        : `${visible} tables`;
+    }
+    tableList.setAttribute('aria-label', `Available tables. ${visible} result${visible === 1 ? '' : 's'}.`);
+  }
   
   function selectTableByIndex(index) {
     const selected = visibleItems[index];
@@ -424,9 +519,15 @@ export function showTableSelector(onSelect) {
       item.style.background = i === selectedIndex ? '#007bff' : '#f8f9fa';
       item.style.color = i === selectedIndex ? 'white' : 'black';
     });
+
+    const activeItem = visibleItems[selectedIndex];
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   updateHighlight();
+  announceTableCount();
   
   items.forEach(item => {
     item.onclick = () => {
@@ -443,6 +544,7 @@ export function showTableSelector(onSelect) {
       );
       selectedIndex = 0;
       updateHighlight();
+      announceTableCount();
     });
   }
   

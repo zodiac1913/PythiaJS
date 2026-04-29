@@ -24,7 +24,7 @@ function getFocusableElements(container) {
 }
 
 function attachModalKeyboard(modal, closeModal) {
-  modal.addEventListener('keydown', (e) => {
+  const keydownHandler = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       closeModal();
@@ -55,7 +55,39 @@ function attachModalKeyboard(modal, closeModal) {
       e.preventDefault();
       first.focus();
     }
+  };
+
+  const focusinHandler = (event) => {
+    if (!modal.isConnected) {
+      return;
+    }
+
+    if (modal.contains(event.target)) {
+      return;
+    }
+
+    const [firstFocusable] = getFocusableElements(modal);
+    if (firstFocusable) {
+      firstFocusable.focus();
+    } else {
+      modal.setAttribute('tabindex', '-1');
+      modal.focus();
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    if (modal.isConnected) {
+      return;
+    }
+
+    modal.removeEventListener('keydown', keydownHandler);
+    document.removeEventListener('focusin', focusinHandler);
+    observer.disconnect();
   });
+
+  modal.addEventListener('keydown', keydownHandler);
+  document.addEventListener('focusin', focusinHandler);
+  observer.observe(document.body, { childList: true, subtree: true });
 
   const [firstFocusable] = getFocusableElements(modal);
   if (firstFocusable) {

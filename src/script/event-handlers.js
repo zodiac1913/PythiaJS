@@ -36,6 +36,7 @@ const historyQueryCache = {};
 let historyRequestController = null;
 let historyViewVisible = false;
 const AUTOCOMPLETE_PREF_KEY = 'pythia.autocomplete.enabled';
+const AUTOCOMPLETE_MAX_ITEMS = 10;
 const SERVER_HEALTH_INTERVAL_MS = 3000;
 let serverHealthTimer = null;
 let serverDownVisible = false;
@@ -123,6 +124,8 @@ function isAutocompleteEnabled() {
 function applyAutocompletePreference() {
   const toggle = document.getElementById('autocompleteToggle');
   const ac = document.getElementById('autocomplete');
+  const queryBox = document.getElementById('q');
+  const status = document.getElementById('autocompleteStatus');
   if (!toggle) {
     return;
   }
@@ -133,10 +136,89 @@ function applyAutocompletePreference() {
   toggle.addEventListener('change', () => {
     globalThis.localStorage?.setItem(AUTOCOMPLETE_PREF_KEY, toggle.checked ? 'on' : 'off');
     if (!toggle.checked && ac) {
-      ac.style.display = 'none';
-      ac.innerHTML = '';
+      hideAutocomplete(ac, queryBox, status);
     }
   });
+}
+
+function hideAutocomplete(ac, queryBox, statusEl) {
+  if (!ac || !queryBox) {
+    return;
+  }
+
+  ac.style.display = 'none';
+  ac.innerHTML = '';
+  ac.dataset.activeIndex = '-1';
+
+  if (statusEl && statusEl.textContent) {
+    statusEl.textContent = '';
+  }
+  if (statusEl) {
+    statusEl.dataset.lastMessage = '';
+  }
+}
+
+function announceAutocompleteStatus(statusEl, message) {
+  if (!statusEl || !message) {
+    return;
+  }
+
+  if (statusEl.dataset.lastMessage === message) {
+    return;
+  }
+
+  statusEl.dataset.lastMessage = message;
+  statusEl.textContent = message;
+}
+
+function setAutocompleteActiveIndex(ac, queryBox, index, announce = false, statusEl = null) {
+  if (!ac || !queryBox) {
+    return;
+  }
+
+  const options = ac.querySelectorAll('[role="option"]');
+  if (!options.length) {
+    ac.dataset.activeIndex = '-1';
+    return;
+  }
+
+  const clamped = Math.max(0, Math.min(index, options.length - 1));
+  ac.dataset.activeIndex = String(clamped);
+
+  options.forEach((option, idx) => {
+    const isActive = idx === clamped;
+    option.classList.toggle('active', isActive);
+    option.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  const activeOption = options[clamped];
+  activeOption.scrollIntoView({ block: 'nearest' });
+
+  if (announce && statusEl) {
+    announceAutocompleteStatus(statusEl, `${activeOption.textContent}, ${clamped + 1} of ${options.length}.`);
+  }
+}
+
+function applyAutocompleteSelection(textarea, ac, selectedText) {
+  const text = textarea.value;
+  const cursorPos = textarea.selectionStart;
+  const textBeforeCursor = text.substring(0, cursorPos);
+  const match = textBeforeCursor.match(/(\w+)$/);
+  const currentWord = match ? match[1] : '';
+  const beforeWord = textBeforeCursor.substring(0, textBeforeCursor.length - currentWord.length);
+  const afterCursor = text.substring(cursorPos);
+
+  textarea.value = beforeWord + selectedText + afterCursor;
+  textarea.selectionStart = textarea.selectionEnd = beforeWord.length + selectedText.length;
+
+  const status = document.getElementById('autocompleteStatus');
+  hideAutocomplete(ac, textarea, status);
+  textarea.focus();
+
+  // If user just selected "SELECT" as the first word, trigger guided SQL flow
+  if (isAutocompleteEnabled() && selectedText === 'SELECT' && textarea.value.match(/^\s*SELECT\s*$/i)) {
+    triggerSelectFlow(textarea);
+  }
 }
 
 function renderAppVersion() {
@@ -428,8 +510,17 @@ function handleAutocompleteTabSelection(e, ac) {
   }
 
   e.preventDefault();
-  const firstSuggestion = ac.querySelector('div');
-  if (firstSuggestion) firstSuggestion.click();
+  const options = ac.querySelectorAll('[role="option"]');
+  if (!options.length) {
+    return true;
+  }
+
+  const activeIndex = Number.parseInt(ac.dataset.activeIndex || '-1', 10);
+  const chosenIndex = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex : 0;
+  const chosen = options[Math.min(chosenIndex, options.length - 1)];
+  if (chosen) {
+    chosen.click();
+  }
   return true;
 }
 
@@ -565,7 +656,45 @@ export function initializeEventHandlers() {
 
   // Query textarea - keydown handler
   document.getElementById('q').addEventListener('keydown', async function(e) {
+    const queryBox = e.target;
     const ac = document.getElementById('autocomplete');
+    const status = document.getElementById('autocompleteStatus');
+
+    if (ac.style.display === 'block') {
+      const options = ac.querySelectorAll('[role="option"]');
+      const activeIndex = Number.parseInt(ac.dataset.activeIndex || '-1', 10);
+
+      if (e.key === 'ArrowDown' && options.length) {
+        e.preventDefault();
+        const next = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex + 1 : 0;
+        setAutocompleteActiveIndex(ac, queryBox, next, true, status);
+        return;
+      }
+
+      if (e.key === 'ArrowUp' && options.length) {
+        e.preventDefault();
+        const next = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex - 1 : options.length - 1;
+        setAutocompleteActiveIndex(ac, queryBox, next, true, status);
+        return;
+      }
+
+      if (e.key === 'Enter' && options.length) {
+        if (Number.isFinite(activeIndex) && activeIndex >= 0) {
+          e.preventDefault();
+          const chosen = options[Math.min(activeIndex, options.length - 1)];
+          if (chosen) {
+            chosen.click();
+          }
+          return;
+        }
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideAutocomplete(ac, queryBox, status);
+        return;
+      }
+    }
 
     if (handleAutocompleteTabSelection(e, ac)) {
       return;
@@ -576,13 +705,17 @@ export function initializeEventHandlers() {
   
   // Query textarea - input handler (autocomplete)
   document.getElementById('q').addEventListener('input', async function(e) {
+    const queryBox = e.target;
+    const ac = document.getElementById('autocomplete');
+    const status = document.getElementById('autocompleteStatus');
+
     if (!isAutocompleteEnabled()) {
-      document.getElementById('autocomplete').style.display = 'none';
+      hideAutocomplete(ac, queryBox, status);
       return;
     }
 
-    const text = e.target.value;
-    const cursorPos = e.target.selectionStart;
+    const text = queryBox.value;
+    const cursorPos = queryBox.selectionStart;
     
     if (!schemaCache[currentConnection]) {
       await loadAllSchemas();
@@ -604,31 +737,35 @@ export function initializeEventHandlers() {
     );
     
     if (suggestions.length === 0 || currentWord.length < 3) {
-      document.getElementById('autocomplete').style.display = 'none';
+      hideAutocomplete(ac, queryBox, status);
       return;
     }
-    
-    const ac = document.getElementById('autocomplete');
-    ac.innerHTML = suggestions.slice(0, 10).map((s, idx) => `<div role="option" tabindex="-1" title="${s}" aria-label="SQL suggestion ${idx + 1}: ${s}">${s}</div>`).join('');
+
+    const topSuggestions = suggestions.slice(0, AUTOCOMPLETE_MAX_ITEMS);
+    ac.innerHTML = topSuggestions.map((s, idx) => {
+      const optionId = `autocomplete-option-${idx}`;
+      return `<div id="${optionId}" class="autocomplete-option" role="option" aria-selected="false" tabindex="-1" data-value="${s}" title="${s}" aria-label="SQL suggestion ${idx + 1}: ${s}">${s}</div>`;
+    }).join('');
     ac.style.display = 'block';
-    
-    ac.querySelectorAll('div').forEach(div => {
-      div.onclick = () => {
-        const beforeCursor = text.substring(0, cursorPos);
-        const afterCursor = text.substring(cursorPos);
-        const beforeWord = beforeCursor.substring(0, beforeCursor.length - currentWord.length);
-        
-        const selectedText = div.textContent;
-        e.target.value = beforeWord + selectedText + afterCursor;
-        e.target.selectionStart = e.target.selectionEnd = beforeWord.length + selectedText.length;
-        ac.style.display = 'none';
-        e.target.focus();
-        
-        // If user just selected "SELECT" as the first word, trigger guided SQL flow
-        if (isAutocompleteEnabled() && selectedText === 'SELECT' && e.target.value.match(/^\s*SELECT\s*$/i)) {
-          triggerSelectFlow(e.target);
+
+    announceAutocompleteStatus(status, `${topSuggestions.length} suggestions available for ${currentWord}. Use up and down arrows to review, Enter or Tab to select.`);
+    setAutocompleteActiveIndex(ac, queryBox, 0, false, status);
+
+    ac.querySelectorAll('.autocomplete-option').forEach((div) => {
+      div.addEventListener('mousedown', (evt) => {
+        evt.preventDefault();
+      });
+
+      div.addEventListener('mouseenter', () => {
+        const optionIndex = Number.parseInt(div.id.replace('autocomplete-option-', ''), 10);
+        if (Number.isFinite(optionIndex)) {
+          setAutocompleteActiveIndex(ac, queryBox, optionIndex, false, status);
         }
-      };
+      });
+
+      div.addEventListener('click', () => {
+        applyAutocompleteSelection(queryBox, ac, div.dataset.value || div.textContent || '');
+      });
     });
   });
   
@@ -649,7 +786,10 @@ export function initializeEventHandlers() {
   // Query textarea - blur handler
   document.getElementById('q').addEventListener('blur', () => {
     setTimeout(() => {
-      document.getElementById('autocomplete').style.display = 'none';
+      const queryBox = document.getElementById('q');
+      const ac = document.getElementById('autocomplete');
+      const status = document.getElementById('autocompleteStatus');
+      hideAutocomplete(ac, queryBox, status);
     }, 200);
   });
   
@@ -671,11 +811,11 @@ export function initializeEventHandlers() {
     clearQueryButton.onclick = () => {
       const queryBox = document.getElementById('q');
       const autocomplete = document.getElementById('autocomplete');
+      const status = document.getElementById('autocompleteStatus');
       queryBox.value = '';
       queryBox.focus();
       if (autocomplete) {
-        autocomplete.style.display = 'none';
-        autocomplete.innerHTML = '';
+        hideAutocomplete(autocomplete, queryBox, status);
       }
     };
   }
