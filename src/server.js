@@ -76,6 +76,16 @@ function isAddressInUseError(err) {
   return err?.code === 'EADDRINUSE' || message.includes('EADDRINUSE') || message.toLowerCase().includes('port') && message.toLowerCase().includes('in use');
 }
 
+function normalizeRunQueryText(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  return text
+    .replaceAll(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replaceAll(/[\u201C\u201D\u201E\u201F]/g, '"');
+}
+
 async function getConnectionSchema(id) {
   try {
     if (id === 'default') {
@@ -366,13 +376,14 @@ function createServer(port) {
     try {
       if (url.pathname === "/api/runQuery" && req.method === "POST") {
         const { text, connection, connectionConfig } = await req.json();
-        console.log('runQuery called with:', { text, connection, connectionConfig: connectionConfig ? 'present' : 'missing' });
-        logQuery(text, connection);
-        logEntry('info', 'query', 'Query executed', text, connection);
+        const normalizedText = normalizeRunQueryText(text);
+        console.log('runQuery called with:', { text: normalizedText, connection, connectionConfig: connectionConfig ? 'present' : 'missing' });
+        logQuery(normalizedText, connection);
+        logEntry('info', 'query', 'Query executed', normalizedText, connection);
         
         try {
           const queryStartedAt = Date.now();
-          const rows = await executeQuery(connection, text);
+          const rows = await executeQuery(connection, normalizedText);
           const queryFinishedAt = Date.now();
           return Response.json({
             rows,

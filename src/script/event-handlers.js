@@ -618,11 +618,15 @@ function normalizePostgresStyleQuery(text) {
 }
 
 function normalizeQueryText(text) {
-  if (detectQueryMode(text) !== 'postgres') {
-    return text;
+  const normalizedQuotes = text
+    .replaceAll(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replaceAll(/[\u201C\u201D\u201E\u201F]/g, '"');
+
+  if (detectQueryMode(normalizedQuotes) !== 'postgres') {
+    return normalizedQuotes;
   }
 
-  return normalizePostgresStyleQuery(text);
+  return normalizePostgresStyleQuery(normalizedQuotes);
 }
 
 function applyResultMeta(result, requestStartedAt) {

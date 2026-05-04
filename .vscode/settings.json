@@ -19,5 +19,6 @@
         "titleBar.inactiveForeground": "#15202b99"
     },
     "peacock.color": "Aqua",
-    "kiroAgent.configureMCP": "Enabled"
+    "kiroAgent.configureMCP": "Enabled",
+    "sonarlint.pathToNodeExecutable": "/Users/rxjr/.local/node-current/bin/node"
 }
