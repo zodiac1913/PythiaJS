@@ -143,10 +143,20 @@ bun index.js
 ### For maintainers (publishing a release)
 
 1. Push code to `main`.
-2. Create a new date-version tag in `YYYY.MM.DD` or `YYYY.MM.DD.x` format (for example `2026.03.30` or `2026.03.30.3`).
-3. Draft a GitHub Release from that tag.
-4. Add release notes and attach platform build artifacts if available.
-5. Publish the release.
+2. Run the release helper with a new date-version tag in `YYYY.MM.DD` or `YYYY.MM.DD.x` format:
+
+```bash
+bun run release:tag -- 2026.03.30
+```
+
+3. To create the tag and push it in one step, use:
+
+```bash
+bun run release:tag -- 2026.03.30 --push
+```
+
+4. The helper updates `version.txt`, creates a `release: <version>` commit when needed, and creates an annotated git tag.
+5. Pushing the tag triggers the GitHub Actions release workflow, which builds release artifacts and publishes the GitHub Release automatically.
 
 The release workflow stamps the tag value into the packaged app automatically, and that version is shown in the footer inside the app.
 

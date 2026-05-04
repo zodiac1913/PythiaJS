@@ -3,6 +3,9 @@
   "module": "index.js",
   "type": "module",
   "private": true,
+  "scripts": {
+    "release:tag": "node scripts/release-tag.mjs"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
