@@ -108,6 +108,7 @@ Important caveats:
 - You still need to provide platform-specific builds (Windows/Linux/macOS).
 - The OS WebView runtime must exist on the target machine.
 - On Windows, install Microsoft Edge WebView2 Runtime before launching the binary: https://go.microsoft.com/fwlink/p/?LinkId=2124703
+- On macOS, unsigned app downloads may trigger Gatekeeper warnings and can require manual approval or quarantine removal.
 - For release quality, test each binary on its target OS before publishing.
 
 Recommended release asset naming:
@@ -133,12 +134,45 @@ If binaries are not attached yet, users can still run from source using Bun.
 1. Open the repository `Releases` page.
 2. Download the latest release asset for your platform (if provided).
 3. Windows users: install Microsoft Edge WebView2 Runtime first if it is not already present: https://go.microsoft.com/fwlink/p/?LinkId=2124703
-4. If no binary assets are attached yet, download `Source code (zip)` and run with Bun:
+4. macOS users: read the macOS startup notes below before assuming the download is broken.
+5. If no binary assets are attached yet, download `Source code (zip)` and run with Bun:
 
 ```bash
 bun install
 bun index.js
 ```
+
+### macOS startup notes
+
+PythiaJS can run on macOS, but downloaded apps may be blocked by Gatekeeper depending on how Apple classifies the file. That does not always mean the app itself is corrupt.
+
+Recommended order:
+
+1. Download the latest macOS release asset.
+2. Extract the `.zip` and move `PythiaJS.app` into `/Applications`.
+3. In Finder, open `/Applications`, then try `right-click -> Open` on `PythiaJS.app`.
+4. If macOS still blocks the app, open Terminal and run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/PythiaJS.app
+open /Applications/PythiaJS.app
+```
+
+5. If you are using the raw compiled binary instead of `PythiaJS.app`, make it executable and run it from Terminal:
+
+```bash
+chmod +x ./PythiaJS
+./PythiaJS
+```
+
+6. If the desktop window still does not appear, try launching from Terminal so you can see any startup error text directly.
+
+What to expect:
+
+- A Gatekeeper warning on first launch is possible on macOS.
+- Removing the quarantine attribute is a local machine decision and only needs to be done on the downloaded copy you want to run.
+- If you are not comfortable using Terminal for these steps, the macOS release path may not be a good fit yet.
+- macOS releases are intended for advanced users and are not signed or notarized.
 
 ### For maintainers (publishing a release)
 
@@ -190,6 +224,7 @@ Short description of what changed in this release.
 
 ### Notes
 - Requires OS WebView runtime.
+- macOS users may need to right-click `Open` or remove the quarantine attribute from the downloaded app.
 - If WebView is unavailable, run in browser mode using the startup URL shown in the app logs (for example `http://localhost:3737/?mode=fallback`).
 - If no binary fits your system, run from source with Bun.
 ```
