@@ -14,6 +14,7 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -43,9 +44,11 @@ jobs:
           bun-version: 1.3.13
 
       - name: Install dependencies
+        timeout-minutes: 15
         run: bun install
 
       - name: Build executable
+        timeout-minutes: 20
         shell: pwsh
         run: |
           $buildArgs = @(
@@ -106,21 +109,22 @@ jobs:
           - Linux: make executable and run from terminal
             chmod +x ./PythiaJS
             ./PythiaJS
-          - macOS: open the bundled app, or if using the raw binary zip:
-            chmod +x ./PythiaJS
-            ./PythiaJS
+          - macOS: unzip the app, move it to /Applications, then try right-click > Open
+          - macOS: if Gatekeeper blocks launch, run:
+            xattr -dr com.apple.quarantine /Applications/PythiaJS.app
+            open /Applications/PythiaJS.app
 
           Notes:
           - This package expects bundled src/ui assets beside the executable.
           - Release version is read from version.txt and shown in the app footer.
           - WebView runtime must be available on the target OS.
           - Linux/macOS bundles include PythiaJS.png at the package root for launcher or app-icon setup.
-          - If macOS blocks launch, move the app to Applications and then right-click > Open.
-          - If macOS still blocks the app, remove quarantine from Terminal:
-            xattr -dr com.apple.quarantine /Applications/PythiaJS.app
+          - macOS releases are unsigned zip archives intended for advanced users.
+          - A Gatekeeper warning on macOS is expected and may require manual approval or quarantine removal.
           "@ | Set-Content "release/RUN.txt"
 
       - name: Smoke test staged binary
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $testPort = 48731
@@ -175,6 +179,7 @@ jobs:
 
       - name: Create macOS app bundle
         if: runner.os == 'macOS'
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
@@ -237,166 +242,24 @@ jobs:
           </plist>
           EOF
 
-      - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-          APPLE_DEVELOPER_ID_CERT_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12 }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION:-}" || -z "${APPLE_DEVELOPER_ID_CERT_P12:-}" || -z "${APPLE_DEVELOPER_ID_CERT_PASSWORD:-}" ]]; then
-            echo "Apple signing secrets not configured. Skipping certificate import."
-            exit 0
-          fi
-
-          cert_path="$RUNNER_TEMP/apple-dev-id.p12"
-          keychain_path="$RUNNER_TEMP/pythiajs-signing.keychain-db"
-          keychain_password="$(openssl rand -hex 16)"
-
-          echo "$APPLE_DEVELOPER_ID_CERT_P12" | base64 --decode > "$cert_path"
-
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$cert_path" -k "$keychain_path" -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
-          security list-keychain -d user -s "$keychain_path" $(security list-keychains -d user | tr -d '"')
-
-      - name: Sign macOS app bundle
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]]; then
-            echo "Apple signing identity not configured. Skipping app signing."
-            exit 0
-          fi
-
-          codesign --force --deep --options runtime --sign "$APPLE_DEVELOPER_ID_APPLICATION" "release/PythiaJS.app"
-          codesign --verify --deep --strict --verbose=2 "release/PythiaJS.app"
-
-      - name: Package macOS disk image
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          dmg_stage="$RUNNER_TEMP/PythiaJS-dmg"
-          temp_dmg="$RUNNER_TEMP/PythiaJS-${{ matrix.platform }}-temp.dmg"
-          dmg_name="PythiaJS-${{ matrix.platform }}.dmg"
-
-          rm -rf "$dmg_stage"
-          rm -f "$temp_dmg" "$dmg_name"
-          mkdir -p "$dmg_stage/.background"
-
-          cp -R "release/PythiaJS.app" "$dmg_stage/PythiaJS.app"
-          cp "src/ui/pic/PythiaJS-bg.png" "$dmg_stage/.background/background.png"
-          ln -s /Applications "$dmg_stage/Applications"
-          chflags hidden "$dmg_stage/.background"
-
-          hdiutil create -volname "PythiaJS" -srcfolder "$dmg_stage" -ov -format UDRW "$temp_dmg"
-          attach_output="$(hdiutil attach "$temp_dmg" -noverify -noautoopen)"
-          device="$(printf '%s\n' "$attach_output" | awk '$1 ~ /^\/dev\// {print $1; exit}')"
-
-          if [[ -z "$device" ]]; then
-            echo "Unable to determine mounted device from hdiutil attach output:"
-            printf '%s\n' "$attach_output"
-            exit 1
-          fi
-
-          if ! osascript <<EOF
-          tell application "Finder"
-            tell disk "PythiaJS"
-              open
-              set current view of container window to icon view
-              set toolbar visible of container window to false
-              set statusbar visible of container window to false
-              set the bounds of container window to {120, 120, 960, 620}
-              set viewOptions to the icon view options of container window
-              set arrangement of viewOptions to not arranged
-              set icon size of viewOptions to 144
-              set text size of viewOptions to 16
-              set background picture of viewOptions to file ".background:background.png"
-              set position of item "PythiaJS.app" of container window to {220, 280}
-              set position of item "Applications" of container window to {620, 280}
-              close
-              open
-              update without registering applications
-              delay 2
-            end tell
-          end tell
-          EOF
-          then
-            echo "Finder styling failed; continuing with a plain drag-to-Applications DMG."
-          fi
-
-          sync
-          hdiutil detach "$device"
-          hdiutil convert "$temp_dmg" -format UDZO -imagekey zlib-level=9 -o "$dmg_name"
-
-      - name: Sign macOS disk image
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]]; then
-            echo "Apple signing identity not configured. Skipping DMG signing."
-            exit 0
-          fi
-
-          dmg_name="PythiaJS-${{ matrix.platform }}.dmg"
-          codesign --force --sign "$APPLE_DEVELOPER_ID_APPLICATION" "$dmg_name"
-          codesign --verify --verbose=2 "$dmg_name"
-
-      - name: Notarize macOS disk image
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
-          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
-          APPLE_NOTARY_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_SPECIFIC_PASSWORD }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${APPLE_NOTARY_APPLE_ID:-}" || -z "${APPLE_NOTARY_TEAM_ID:-}" || -z "${APPLE_NOTARY_APP_SPECIFIC_PASSWORD:-}" ]]; then
-            echo "Apple notarization secrets not configured. Skipping notarization."
-            exit 0
-          fi
-
-          dmg_name="PythiaJS-${{ matrix.platform }}.dmg"
-          xcrun notarytool submit "$dmg_name" \
-            --apple-id "$APPLE_NOTARY_APPLE_ID" \
-            --team-id "$APPLE_NOTARY_TEAM_ID" \
-            --password "$APPLE_NOTARY_APP_SPECIFIC_PASSWORD" \
-            --wait
-          xcrun stapler staple "$dmg_name"
-
-      - name: Cleanup Apple signing keychain
-        if: always() && runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -f "$RUNNER_TEMP/pythiajs-signing.keychain-db" ]]; then
-            security delete-keychain "$RUNNER_TEMP/pythiajs-signing.keychain-db" || true
-          fi
-
-      - name: Package zip
+      - name: Package non-macOS zip
         if: runner.os != 'macOS'
         shell: pwsh
         run: |
           $zipName = "PythiaJS-${{ matrix.platform }}.zip"
           if (Test-Path $zipName) { Remove-Item $zipName -Force }
           Compress-Archive -Path "release/*" -DestinationPath $zipName
+
+      - name: Package macOS zip
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          zip_name="PythiaJS-${{ matrix.platform }}.zip"
+          rm -f "$zip_name"
+          ditto -c -k --sequesterRsrc --keepParent "release/PythiaJS.app" "$zip_name"
 
       - name: Upload non-macOS artifact
         if: runner.os != 'macOS'
@@ -410,7 +273,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: PythiaJS-${{ matrix.platform }}
-          path: PythiaJS-${{ matrix.platform }}.dmg
+          path: PythiaJS-${{ matrix.platform }}.zip
 
   release:
     name: Publish GitHub Release
@@ -431,7 +294,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(release-assets/*.zip release-assets/*.dmg)
+          files=(release-assets/*.zip)
           if [ ${#files[@]} -eq 0 ]; then
             echo "No build artifacts were produced. Skipping release publish."
             echo "has_artifacts=false" >> "$GITHUB_OUTPUT"
@@ -447,5 +310,4 @@ jobs:
         with:
           files: |
             release-assets/*.zip
-            release-assets/*.dmg
           generate_release_notes: true
