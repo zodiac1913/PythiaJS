@@ -288,13 +288,12 @@ jobs:
           set -euo pipefail
 
           dmg_stage="$RUNNER_TEMP/PythiaJS-dmg"
-          mount_dir="$RUNNER_TEMP/PythiaJS-dmg-mount"
           temp_dmg="$RUNNER_TEMP/PythiaJS-${{ matrix.platform }}-temp.dmg"
           dmg_name="PythiaJS-${{ matrix.platform }}.dmg"
 
-          rm -rf "$dmg_stage" "$mount_dir"
+          rm -rf "$dmg_stage"
           rm -f "$temp_dmg" "$dmg_name"
-          mkdir -p "$dmg_stage/.background" "$mount_dir"
+          mkdir -p "$dmg_stage/.background"
 
           cp -R "release/PythiaJS.app" "$dmg_stage/PythiaJS.app"
           cp "src/ui/pic/PythiaJS-bg.png" "$dmg_stage/.background/background.png"
@@ -302,9 +301,10 @@ jobs:
           chflags hidden "$dmg_stage/.background"
 
           hdiutil create -volname "PythiaJS" -srcfolder "$dmg_stage" -ov -format UDRW "$temp_dmg"
-          device="$(hdiutil attach "$temp_dmg" -mountpoint "$mount_dir" -noverify -noautoopen | awk '/Apple_HFS/ {print $1; exit}')"
+          attach_output="$(hdiutil attach "$temp_dmg" -noverify -noautoopen)"
+          device="$(printf '%s\n' "$attach_output" | awk '/Apple_HFS/ {print $1; exit}')"
 
-          osascript <<EOF
+          if ! osascript <<EOF
           tell application "Finder"
             tell disk "PythiaJS"
               open
@@ -326,6 +326,9 @@ jobs:
             end tell
           end tell
           EOF
+          then
+            echo "Finder styling failed; continuing with a plain drag-to-Applications DMG."
+          fi
 
           sync
           hdiutil detach "$device"
