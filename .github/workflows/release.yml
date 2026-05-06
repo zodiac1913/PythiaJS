@@ -33,7 +33,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -389,14 +391,14 @@ jobs:
 
       - name: Upload non-macOS artifact
         if: runner.os != 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PythiaJS-${{ matrix.platform }}
           path: PythiaJS-${{ matrix.platform }}.zip
 
       - name: Upload macOS artifact
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PythiaJS-${{ matrix.platform }}
           path: PythiaJS-${{ matrix.platform }}.dmg
@@ -409,7 +411,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: PythiaJS-*
           merge-multiple: true
