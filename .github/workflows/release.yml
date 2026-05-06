@@ -43,9 +43,40 @@ jobs:
         with:
           bun-version: 1.3.13
 
+      - name: Resolve Bun executable
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          candidates=()
+          if command -v bun >/dev/null 2>&1; then
+            candidates+=("$(command -v bun)")
+          fi
+          if [ -n "${HOME:-}" ]; then
+            candidates+=("$HOME/.bun/bin/bun" "$HOME/.bun/bin/bun.exe")
+          fi
+          if [ -n "${USERPROFILE:-}" ]; then
+            candidates+=("$USERPROFILE/.bun/bin/bun.exe" "$USERPROFILE/.bun/bin/bun")
+          fi
+
+          for candidate in "${candidates[@]}"; do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              echo "BUN_EXECUTABLE=$candidate" >> "$GITHUB_ENV"
+              echo "Using Bun executable: $candidate"
+              exit 0
+            fi
+          done
+
+          echo "Unable to locate Bun after setup-bun." >&2
+          printf 'PATH=%s\n' "$PATH" >&2
+          exit 1
+
       - name: Install dependencies
+        shell: bash
         timeout-minutes: 15
-        run: bun install
+        run: |
+          set -euo pipefail
+          "$BUN_EXECUTABLE" install
 
       - name: Build executable
         timeout-minutes: 20
@@ -66,7 +97,7 @@ jobs:
             )
           }
 
-          bun @buildArgs
+          & $env:BUN_EXECUTABLE @buildArgs
 
       - name: Stage release files
         shell: pwsh
