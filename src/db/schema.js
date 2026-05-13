@@ -42,6 +42,7 @@ export const schema = {
         connection TEXT DEFAULT NULL,
         message TEXT NOT NULL,
         detail TEXT,
+        archived_at DATETIME,
         created_at DATETIME DEFAULT (datetime('now','localtime'))
       );
     `

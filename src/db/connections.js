@@ -478,15 +478,42 @@ export async function executeQuery(connId, query) {
     }
   }
   
-  if (conn.type === 'sqlite') {
-    const stmt = conn.client.query(query);
-    return stmt.all();
-  } else if (conn.type === 'postgres') {
-    const result = await conn.client.unsafe(query);
-    return result;
-  } else if (conn.type === 'mssql') {
-    const result = await conn.client.request().query(query);
-    return result.recordset;
+  try {
+    if (conn.type === 'sqlite') {
+      const stmt = conn.client.query(query);
+      return stmt.all();
+    }
+
+    if (conn.type === 'postgres') {
+      const result = await conn.client.unsafe(query);
+      return result;
+    }
+
+    if (conn.type === 'mssql') {
+      const result = await conn.client.request().query(query);
+      return result.recordset;
+    }
+  } catch (error) {
+    const enrichedError = buildConnectionError(error, conn.type);
+    const detailPayload = {
+      databaseType: conn.type,
+      connectionId: connId,
+      query,
+      message: enrichedError?.message || String(enrichedError),
+      code: enrichedError?.code || null,
+      details: enrichedError?.details || null,
+      stack: enrichedError?.stack || null
+    };
+
+    logEntry(
+      'error',
+      'query',
+      `${conn.type.toUpperCase()} SQL execution failed`,
+      JSON.stringify(detailPayload),
+      connId
+    );
+
+    throw enrichedError;
   }
 }
 

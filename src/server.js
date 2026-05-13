@@ -18,9 +18,9 @@
 
 
 import { connectDB } from "./db/index.js";
-import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, clearLogs } from "./db/sqlite.js";
+import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, getLogMaintenanceStatus, startLogMaintenanceTask, getLogTimelinePresets, setLogTimelinePreset } from "./db/sqlite.js";
 import { addConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
@@ -348,6 +348,16 @@ function createServer(port) {
       });
     }
 
+    if (url.pathname === "/script/logs.js") {
+      const logsJs = readFileSync(assetPath("src/script/logs.js"), "utf-8");
+      return new Response(logsJs, {
+        headers: {
+          "Content-Type": "application/javascript",
+          ...corsHeaders
+        }
+      });
+    }
+
     if (url.pathname === "/script/smlUtils.js") {
       const smlUtilsJs = readFileSync(assetPath("src/script/smlUtils.js"), "utf-8");
       return new Response(smlUtilsJs, {
@@ -395,9 +405,61 @@ function createServer(port) {
           }, { headers: corsHeaders });
         } catch (queryErr) {
           console.error('Query execution error:', queryErr.message);
-          logEntry('error', 'query', queryErr.message, 'Query: ' + text, connection);
+          const errorDetail = {
+            query: normalizedText,
+            connection,
+            message: queryErr?.message || String(queryErr),
+            code: queryErr?.code || null,
+            stack: queryErr?.stack || null,
+            details: queryErr?.details || null
+          };
+          logEntry('error', 'query', 'SQL execution failed', JSON.stringify(errorDetail), connection);
           return Response.json({ error: queryErr.message }, { status: 200, headers: corsHeaders });
         }
+      }
+
+      if (url.pathname === "/api/logMaintenanceStatus" && req.method === "GET") {
+        const status = getLogMaintenanceStatus();
+        return Response.json(status, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/runLogMaintenance" && req.method === "POST") {
+        const summary = await startLogMaintenanceTask();
+        return Response.json(summary, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/logTimelinePresets" && req.method === "GET") {
+        const payload = getLogTimelinePresets();
+        return Response.json(payload, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/setLogTimelinePreset" && req.method === "POST") {
+        const { presetKey } = await req.json();
+        const status = setLogTimelinePreset(presetKey);
+        return Response.json(status, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/listArchivedLogs" && req.method === "GET") {
+        const { archiveRoot } = getLogMaintenanceStatus();
+        if (!existsSync(archiveRoot)) {
+          return Response.json([], { headers: corsHeaders });
+        }
+
+        const files = readdirSync(archiveRoot)
+          .filter((name) => name.endsWith('.logs.txt'))
+          .map((name) => {
+            const fullPath = path.resolve(archiveRoot, name);
+            const stats = statSync(fullPath);
+            return {
+              name,
+              path: fullPath,
+              size: stats.size,
+              modifiedAt: stats.mtime.toISOString()
+            };
+          })
+          .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
+
+        return Response.json(files, { headers: corsHeaders });
       }
       
       if (url.pathname === "/api/getHistory" && req.method === "GET") {
@@ -527,11 +589,6 @@ function createServer(port) {
         const limit = Number.parseInt(url.searchParams.get('limit') || '100', 10);
         const rows = getLogs(limit);
         return Response.json(rows, { headers: corsHeaders });
-      }
-      
-      if (url.pathname === "/api/clearLogs" && req.method === "POST") {
-        clearLogs();
-        return Response.json({ success: true }, { headers: corsHeaders });
       }
       
       return Response.json({ error: "Not found" }, { status: 404, headers: corsHeaders });

@@ -22,6 +22,9 @@
     .toolbar-actions,.toolbar-exports{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
     .toolbar-exports{justify-content:flex-end}
     .toolbar-exports .btn-group{margin-left:0 !important}
+    .workspace-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+    .workspace-tab-btn{border-radius:999px;padding:.4rem .95rem;font-weight:600}
+    .workspace-pane[hidden]{display:none !important}
     .query-search-wrap{position:relative}
     .query-label-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
     .query-label-row .form-check{margin:0}
@@ -39,6 +42,28 @@
     .server-down-title{font-size:1.05rem;font-weight:700;color:#8b1d2c;margin-bottom:.45rem}
     .server-down-text{font-size:.95rem;color:#374151;margin-bottom:.55rem}
     .server-down-url{font-size:.84rem;color:#111827;word-break:break-all;background:#f3f4f6;border-radius:8px;padding:.4rem .55rem}
+    .maintenance-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,20,.55);z-index:2900;padding:1rem}
+    .maintenance-panel{max-width:560px;width:min(100%,560px);background:#fff;border-radius:12px;border:1px solid #d0d7e2;box-shadow:0 18px 42px rgba(0,0,0,.28);padding:1rem 1.1rem}
+    .maintenance-title{font-size:1.05rem;font-weight:700;color:#1f2937;margin-bottom:.45rem}
+    .maintenance-text{font-size:.95rem;color:#374151;margin-bottom:.45rem}
+    .maintenance-sub{font-size:.84rem;color:#4b5563;background:#f3f4f6;border-radius:8px;padding:.4rem .55rem}
+    .logs-toolbar{display:flex;gap:.75rem;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+    .logs-toolbar-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    .logs-preset-group{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    .logs-preset-group .form-select{min-width:220px}
+    .logs-tab-banner{margin-bottom:1rem}
+    .logs-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin-bottom:1rem}
+    .logs-status-card{background:rgba(255,255,255,.76);border:1px solid rgba(203,213,225,.9);border-radius:12px;padding:.85rem .95rem;box-shadow:0 10px 22px rgba(15,23,42,.08)}
+    .logs-status-label{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:.3rem}
+    .logs-status-value{font-size:1.1rem;font-weight:700;color:#0f172a;margin-bottom:.3rem}
+    .logs-layout{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:1rem;align-items:start}
+    .logs-panel-card{background:rgba(255,255,255,.74);border:1px solid rgba(203,213,225,.9);border-radius:12px;padding:1rem;box-shadow:0 10px 22px rgba(15,23,42,.08)}
+    .logs-file-list{display:flex;flex-direction:column;gap:.75rem;max-height:480px;overflow:auto}
+    .logs-file-row{display:flex;justify-content:space-between;gap:1rem;padding-bottom:.75rem;border-bottom:1px solid #e5e7eb}
+    .logs-file-row:last-child{border-bottom:none;padding-bottom:0}
+    .logs-file-name{font-weight:600;color:#0f172a;word-break:break-word}
+    .logs-table{font-size:.88rem}
+    .logs-detail-pre{margin:0;white-space:pre-wrap;word-break:break-word;background:transparent;font-size:.8rem;max-width:420px}
     .fallback-url{display:inline-block;margin-left:6px;word-break:break-all;color:#664d03;font-weight:600}
     .runtime-url{display:inline-block;margin-left:6px;word-break:break-all;color:#fff;font-weight:600}
     .fallback-copy{margin-left:8px;border:1px solid #d3bf8a;background:#fff3cd;color:#664d03;border-radius:6px;padding:2px 8px;font-size:.85rem;cursor:pointer}
@@ -49,10 +74,13 @@
       .toolbar-grid{grid-template-columns:1fr}
       .toolbar-exports{justify-content:flex-start}
       .workspace-panel{margin-top:10px}
+      .logs-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .logs-layout{grid-template-columns:1fr}
     }
     @media (max-width:575.98px){
       .workspace-panel{border-radius:10px}
       .toolbar-actions .btn,.toolbar-exports .btn{flex:1 1 auto}
+      .logs-status-grid{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -92,9 +120,22 @@
         </div>
       </section>
     </div>
+    <div id="logMaintenanceOverlay" class="maintenance-overlay" role="dialog" aria-live="assertive" aria-label="Log backup in progress">
+      <section class="maintenance-panel">
+        <h2 class="maintenance-title">Preparing Logs Backup</h2>
+        <p class="maintenance-text">Pythia is archiving SQL logs in the background. Please keep the app open until this completes.</p>
+        <p id="logMaintenanceDetail" class="maintenance-sub">Checking backup status...</p>
+      </section>
+    </div>
     <main id="mainContent" class="app-shell container-fluid px-2 px-md-3">
     <h1 class="visually-hidden">Pythia JS SQL Console</h1>
       <section class="workspace-panel p-3 p-md-4">
+        <div class="workspace-tabs" role="tablist" aria-label="Workspace sections">
+          <button id="workspaceTabQuery" type="button" class="btn btn-outline-secondary workspace-tab-btn active" data-workspace-tab="query" role="tab" aria-controls="workspacePaneQuery" aria-selected="true" tabindex="0">Query</button>
+          <button id="workspaceTabLogs" type="button" class="btn btn-outline-secondary workspace-tab-btn" data-workspace-tab="logs" role="tab" aria-controls="workspacePaneLogs" aria-selected="false" tabindex="0">Logs</button>
+        </div>
+
+        <section id="workspacePaneQuery" data-workspace-pane="query" class="workspace-pane active" role="tabpanel" aria-labelledby="workspaceTabQuery">
         <h2 class="h5 workspace-title mb-3">Query Workspace</h2>
 
 
@@ -121,8 +162,8 @@
 
         <div class="toolbar-grid">
           <div id="ButtonGroup1" class="toolbar-cell toolbar-actions">
-          <button id="run" class="btn btn-primary" title="Run query" aria-label="Run query">Run Query</button>
-          <sml-reactive-button id="clearQuery" class="btn btn-palegreen" type="button" title="Clear query box" aria-label="Clear query box" data-icon="bi bi-recycle" data-text="Clear query" data-icon-only="true"></sml-reactive-button>
+          <button id="run" class="btn btn-primary" title="Run query" aria-label="Run query" tabindex="0">Run Query</button>
+          <sml-reactive-button id="clearQuery" class="btn btn-palegreen" type="button" title="Clear query box" aria-label="Clear query box" data-icon="bi bi-recycle" data-text="Clear query" data-icon-only="true" tabindex="0"></sml-reactive-button>
           </div>
           <div id="ButtonGroup2" class="toolbar-cell">
             <div class="query-search-wrap">
@@ -131,9 +172,9 @@
             </div>
           </div>
           <div id="ButtonGroup3" class="toolbar-cell toolbar-exports">
-            <button id="history" class="btn btn-palevioletred" title="Show query history" aria-label="Show History - query history">Show History</button>
+            <button id="history" class="btn btn-palevioletred" title="Show query history" aria-label="Show History - query history" tabindex="0">Show History</button>
             <div class="btn-group">
-                <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Choose output format" aria-label="Choose output format">
+                <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Choose output format" aria-label="Choose output format" tabindex="0">
                   <span id="formatLabel">Table</span>
                 </button>
                 <ul class="dropdown-menu">
@@ -143,7 +184,7 @@
                   <li><a class="dropdown-item" href="#" data-format="csv" title="Display as CSV text" aria-label="Text CSV - display as CSV text">Text CSV</a></li>
                 </ul>
             </div>
-            <button id="saveFile" class="btn btn-success" title="Save query result" aria-label="Save File - query result">Save File</button>
+            <button id="saveFile" class="btn btn-success" title="Save query result" aria-label="Save File - query result" tabindex="0">Save File</button>
           </div>
         </div>
         <div id="progress" class="mt-3" style="display:none">
@@ -154,6 +195,40 @@
         </div>
 
         <div id="answer" class="mt-3 p-3 bg-light border rounded" style="overflow:auto;display:none" aria-live="polite" aria-label="Query results" title="Query results"></div>
+
+        </section>
+
+        <section id="workspacePaneLogs" data-workspace-pane="logs" class="workspace-pane" role="tabpanel" aria-labelledby="workspaceTabLogs" aria-hidden="true" hidden>
+          <div class="logs-toolbar">
+            <div>
+              <h2 class="h5 workspace-title mb-1">Logs</h2>
+              <p class="text-muted mb-0">Current app logs, archive behavior, and exported text files.</p>
+            </div>
+            <div class="logs-toolbar-actions">
+              <div class="logs-preset-group">
+                <select id="logsTimelinePreset" class="form-select form-select-sm" aria-label="Logs timeline preset"></select>
+                <button id="applyLogsTimelinePreset" class="btn btn-outline-dark btn-sm" type="button">Apply Timeline</button>
+              </div>
+              <button id="refreshLogsTab" class="btn btn-outline-secondary" type="button">Refresh</button>
+              <button id="runLogArchiveNow" class="btn btn-outline-primary" type="button">Run Archive Check</button>
+            </div>
+          </div>
+
+          <output id="logsTabBanner" class="logs-tab-banner alert alert-light">Open this tab to inspect live logs and archive output.</output>
+          <div id="logsStatusCards"></div>
+
+          <div class="logs-layout">
+            <article class="logs-panel-card">
+              <h3 class="h6 mb-3">Archived Text Files</h3>
+              <div id="logsArchiveFiles" class="logs-file-list"></div>
+            </article>
+
+            <article class="logs-panel-card">
+              <h3 class="h6 mb-3">Live App Logs</h3>
+              <div id="logsTableWrap"></div>
+            </article>
+          </div>
+        </section>
 
       </section>
     </main>

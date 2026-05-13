@@ -19,6 +19,7 @@ import { loadAllSchemas, parseQueryContext, showFieldSelector, showTableSelector
 import { displayResult, saveAs } from './display.js';
 import { showConnectionDetailsModal, showAddConnectionModal, showSaveFileModal } from './modals.js';
 import { escapeFieldIdentifier, formatTableIdentifier, resolveSchemaTableKey } from './db-identifiers.js';
+import { initializeLogsTab } from './logs.js';
 import './sml/smlReactiveButton.js';
 import { 
   APP_VERSION,
@@ -40,6 +41,8 @@ const AUTOCOMPLETE_MAX_ITEMS = 10;
 const SERVER_HEALTH_INTERVAL_MS = 3000;
 let serverHealthTimer = null;
 let serverDownVisible = false;
+let logMaintenanceTimer = null;
+let isLogMaintenanceRunning = false;
 
 function setHistoryToggleState(isVisible) {
   const historyBtn = document.getElementById('history');
@@ -83,6 +86,62 @@ function hideServerDownOverlay() {
 
   overlay.style.display = 'none';
   serverDownVisible = false;
+}
+
+function getLogMaintenanceElements() {
+  return {
+    overlay: document.getElementById('logMaintenanceOverlay'),
+    detail: document.getElementById('logMaintenanceDetail')
+  };
+}
+
+function setLogMaintenanceOverlay(isVisible, detailText = '') {
+  const { overlay, detail } = getLogMaintenanceElements();
+  if (!overlay) {
+    return;
+  }
+
+  overlay.style.display = isVisible ? 'flex' : 'none';
+  if (detail && detailText) {
+    detail.textContent = detailText;
+  }
+}
+
+async function checkLogMaintenanceStatus() {
+  try {
+    const status = await call('/api/logMaintenanceStatus', 'GET');
+    isLogMaintenanceRunning = !!status?.running;
+
+    if (isLogMaintenanceRunning) {
+      const startedAtText = status?.lastStartedAt
+        ? new Date(status.lastStartedAt).toLocaleString()
+        : 'now';
+      const archiveRootText = status?.archiveRoot || 'Documents/Pythia/Logs';
+      const detailText = `Started: ${startedAtText}. Writing archives to ${archiveRootText}.`;
+      setLogMaintenanceOverlay(true, detailText);
+      return;
+    }
+
+    const exportedRows = Number(status?.lastSummary?.exportedRows || 0);
+    const detailText = exportedRows > 0
+      ? `Backup complete. Exported ${exportedRows} log entries and trimmed archived rows from the app log database.`
+      : 'No logs needed backup at startup.';
+    setLogMaintenanceOverlay(false, detailText);
+    if (logMaintenanceTimer) {
+      clearInterval(logMaintenanceTimer);
+      logMaintenanceTimer = null;
+    }
+  } catch (err) {
+    console.warn('Could not read log maintenance status:', err?.message || err);
+  }
+}
+
+function startLogMaintenanceMonitor() {
+  checkLogMaintenanceStatus();
+  if (logMaintenanceTimer) {
+    clearInterval(logMaintenanceTimer);
+  }
+  logMaintenanceTimer = setInterval(checkLogMaintenanceStatus, 2000);
 }
 
 async function checkServerHealth() {
@@ -505,7 +564,13 @@ async function triggerSelectFlow(textarea) {
 }
 
 function handleAutocompleteTabSelection(e, ac) {
-  if (e.key !== 'Tab' || ac.style.display !== 'block') {
+  if (e.key !== 'Tab' || e.shiftKey || ac.style.display !== 'block') {
+    return false;
+  }
+
+  // Let normal focus traversal work unless the user is actively navigating
+  // autocomplete options with the keyboard.
+  if (ac.dataset.keyboardNav !== 'true') {
     return false;
   }
 
@@ -671,6 +736,7 @@ export function initializeEventHandlers() {
       if (e.key === 'ArrowDown' && options.length) {
         e.preventDefault();
         const next = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex + 1 : 0;
+        ac.dataset.keyboardNav = 'true';
         setAutocompleteActiveIndex(ac, queryBox, next, true, status);
         return;
       }
@@ -678,6 +744,7 @@ export function initializeEventHandlers() {
       if (e.key === 'ArrowUp' && options.length) {
         e.preventDefault();
         const next = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex - 1 : options.length - 1;
+        ac.dataset.keyboardNav = 'true';
         setAutocompleteActiveIndex(ac, queryBox, next, true, status);
         return;
       }
@@ -751,6 +818,7 @@ export function initializeEventHandlers() {
       return `<div id="${optionId}" class="autocomplete-option" role="option" aria-selected="false" tabindex="-1" data-value="${s}" title="${s}" aria-label="SQL suggestion ${idx + 1}: ${s}">${s}</div>`;
     }).join('');
     ac.style.display = 'block';
+    ac.dataset.keyboardNav = 'false';
 
     announceAutocompleteStatus(status, `${topSuggestions.length} suggestions available for ${currentWord}. Use up and down arrows to review, Enter or Tab to select.`);
     setAutocompleteActiveIndex(ac, queryBox, 0, false, status);
@@ -763,6 +831,7 @@ export function initializeEventHandlers() {
       div.addEventListener('mouseenter', () => {
         const optionIndex = Number.parseInt(div.id.replace('autocomplete-option-', ''), 10);
         if (Number.isFinite(optionIndex)) {
+          ac.dataset.keyboardNav = 'false';
           setAutocompleteActiveIndex(ac, queryBox, optionIndex, false, status);
         }
       });
@@ -852,6 +921,7 @@ export function initializeEventHandlers() {
 
       delete historyQueryCache[currentConnection];
       document.dispatchEvent(new CustomEvent('query-history-refresh'));
+      document.dispatchEvent(new CustomEvent('logs-refresh'));
       
       progressText.textContent = `Rendering ${result.rows?.length || 0} rows...`;
       setLastResult(result);
@@ -862,6 +932,7 @@ export function initializeEventHandlers() {
       answer.innerHTML = `<p class="text-danger">Error: ${err.message}</p>`;
       answer.style.display = 'block';
       setHistoryToggleState(false);
+      document.dispatchEvent(new CustomEvent('logs-refresh'));
     } finally {
       setRunQueryUiState(false, runBtn, progress, answer, progressText);
     }
@@ -907,8 +978,10 @@ document.addEventListener('DOMContentLoaded', function() {
   renderRuntimeUrlBanner();
   renderFallbackModeBanner();
   startServerHealthMonitor();
+  startLogMaintenanceMonitor();
   loadConnections();
   initializeEventHandlers();
+  initializeLogsTab();
 
   const retryButton = document.getElementById('retryServerConnection');
   if (retryButton) {
@@ -937,9 +1010,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Shutdown server when webview window closes
-window.addEventListener('beforeunload', function() {
+window.addEventListener('beforeunload', function(event) {
   const params = new URLSearchParams(globalThis.location.search);
   if (params.get('host') !== 'webview') {
+    return;
+  }
+
+  if (isLogMaintenanceRunning) {
+    event.preventDefault();
+    setLogMaintenanceOverlay(true, 'Log backup is still running. Please wait for completion before closing PythiaJS.');
     return;
   }
 
