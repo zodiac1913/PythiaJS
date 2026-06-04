@@ -5,13 +5,9 @@
       "type": "node",
       "request": "launch",
       "name": "Launch PythiaJS (App + Server)",
-      "runtimeExecutable": "${env:HOME}/.bun/bin/bun",
+      "runtimeExecutable": "bun",
       "program": "${workspaceFolder}/index.js",
       "cwd": "${workspaceFolder}",
-      "env": {
-        "BUN_INSTALL": "${env:HOME}/.bun",
-        "PATH": "${env:HOME}/.bun/bin:${env:PATH}"
-      },
       "console": "internalConsole",
       "outputCapture": "std"
     },
@@ -19,13 +15,9 @@
       "type": "node",
       "request": "launch",
       "name": "Server Only",
-      "runtimeExecutable": "${env:HOME}/.bun/bin/bun",
+      "runtimeExecutable": "bun",
       "program": "${workspaceFolder}/src/server.js",
       "cwd": "${workspaceFolder}",
-      "env": {
-        "BUN_INSTALL": "${env:HOME}/.bun",
-        "PATH": "${env:HOME}/.bun/bin:${env:PATH}"
-      },
       "console": "internalConsole",
       "outputCapture": "std",
       "killBehavior": "polite"
