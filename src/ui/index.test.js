@@ -207,14 +207,14 @@ describe('Preservation Property Tests', () => {
   };
 
   /**
-   * Test 2.1: Tab completion preservation
+   * Test 2.1: Keyboard suggestion availability
    * 
-   * Preservation: Tab key should complete with first suggestion
-   * This behavior must remain unchanged after the fix
+   * Preservation: keyboard selection still needs a deterministic first suggestion,
+   * even though Tab is reserved for focus traversal.
    * 
    * **Validates: Requirements 3.1**
    */
-  test('2.1 Tab completion - should complete with first suggestion', () => {
+  test('2.1 Keyboard selection - should expose a first suggestion for arrow and Enter flow', () => {
     // Simulate typing "SELECT * FROM u" - should suggest "users"
     const query = 'SELECT * FROM u';
     const cursorPos = query.length;
@@ -226,9 +226,7 @@ describe('Preservation Property Tests', () => {
     expect(suggestions.length).toBeGreaterThan(0);
     expect(suggestions[0]).toBe('users');
     
-    // Tab completion behavior: first suggestion should be available
-    // (The actual Tab key handling is in the DOM event listener, 
-    // but we verify the suggestion system provides the first item)
+    // Arrow-key navigation plus Enter depends on the first suggestion being stable.
     expect(suggestions[0]).toBeTruthy();
   });
 

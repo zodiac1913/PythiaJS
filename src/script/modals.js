@@ -11,7 +11,7 @@
  */
 
 // Modal & UI Functions
-import { allConnections, currentConnection } from './state.js';
+import { allConnections, currentConnection, OLLAMA_MODEL_STORAGE_KEY } from './state.js';
 import { call, loadConnections, selectConnection } from './api.js';
 import { saveAs } from './display.js';
 
@@ -550,6 +550,86 @@ export function showSaveFileModal() {
   modal.querySelector('#saveXlsx').onclick = async () => { await saveAs('xlsx'); closeModal(); };
   modal.querySelector('#saveCsv').onclick = () => { saveAs('csv'); closeModal(); };
   modal.querySelector('#savePdf').onclick = async () => { await saveAs('pdf'); closeModal(); };
+}
+
+export function showSettingsModal() {
+  const modal = document.createElement('div');
+  const closeModal = () => modal.remove();
+  modal.innerHTML = `
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,0.5)" role="dialog" aria-modal="true" aria-label="Application settings modal">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Settings</h5></div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="ollamaModelSelect">Ollama Model</label>
+              <select id="ollamaModelSelect" class="form-select" aria-describedby="ollamaSettingsHelp" disabled>
+                <option>Loading models...</option>
+              </select>
+              <div id="ollamaSettingsHelp" class="form-text">Choose which local Ollama model the AI workspace should use.</div>
+            </div>
+            <div id="ollamaSettingsStatus" class="small text-muted">Checking Ollama status...</div>
+            <hr>
+            <div class="small text-muted">Additional AI and app-level settings can live here as the feature set grows.</div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="settingsCancel" title="Cancel" aria-label="Cancel">Cancel</button>
+            <button class="btn btn-primary" id="settingsSave" title="Save settings" aria-label="Save settings" disabled>Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  attachModalKeyboard(modal, closeModal);
+
+  const modelSelect = modal.querySelector('#ollamaModelSelect');
+  const statusEl = modal.querySelector('#ollamaSettingsStatus');
+  const saveBtn = modal.querySelector('#settingsSave');
+  const currentModel = globalThis.localStorage?.getItem(OLLAMA_MODEL_STORAGE_KEY) || '';
+
+  modal.querySelector('#settingsCancel').onclick = closeModal;
+
+  saveBtn.onclick = () => {
+    const selectedModel = modelSelect.value;
+    if (selectedModel) {
+      globalThis.localStorage?.setItem(OLLAMA_MODEL_STORAGE_KEY, selectedModel);
+    } else {
+      globalThis.localStorage?.removeItem(OLLAMA_MODEL_STORAGE_KEY);
+    }
+
+    document.dispatchEvent(new CustomEvent('ollama-settings-changed', {
+      detail: { model: selectedModel }
+    }));
+    closeModal();
+  };
+
+  void (async () => {
+    try {
+      const status = await call('/api/ollama/status');
+      if (!status.online || !Array.isArray(status.models) || status.models.length === 0) {
+        statusEl.textContent = 'Ollama is offline or no models are available.';
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+        modelSelect.disabled = true;
+        saveBtn.disabled = true;
+        return;
+      }
+
+      modelSelect.innerHTML = status.models.map((entry) => {
+        const selected = (currentModel || status.defaultModel) === entry.name ? 'selected' : '';
+        return `<option value="${entry.name}" ${selected}>${entry.name}</option>`;
+      }).join('');
+      modelSelect.disabled = false;
+      saveBtn.disabled = false;
+      statusEl.textContent = `Ollama online at ${status.baseUrl}. ${status.models.length} model(s) available.`;
+    } catch (error) {
+      statusEl.textContent = `Could not load Ollama settings: ${error?.message || error}`;
+      modelSelect.innerHTML = '<option value="">No models available</option>';
+      modelSelect.disabled = true;
+      saveBtn.disabled = true;
+    }
+  })();
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

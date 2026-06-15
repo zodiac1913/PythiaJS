@@ -15,9 +15,10 @@
 // This file imports from modules and sets up event listeners
 
 import { call, loadConnections } from './api.js';
+import { initializeAiAssistant } from './ai.js';
 import { loadAllSchemas, parseQueryContext, showFieldSelector, showTableSelector, detectQueryMode } from './autocomplete.js';
 import { displayResult, saveAs } from './display.js';
-import { showConnectionDetailsModal, showAddConnectionModal, showSaveFileModal } from './modals.js';
+import { showConnectionDetailsModal, showAddConnectionModal, showSaveFileModal, showSettingsModal } from './modals.js';
 import { escapeFieldIdentifier, formatTableIdentifier, resolveSchemaTableKey } from './db-identifiers.js';
 import { initializeLogsTab } from './logs.js';
 import './sml/smlReactiveButton.js';
@@ -208,8 +209,10 @@ function hideAutocomplete(ac, queryBox, statusEl) {
   ac.style.display = 'none';
   ac.innerHTML = '';
   ac.dataset.activeIndex = '-1';
+  ac.setAttribute('aria-hidden', 'true');
+  queryBox.removeAttribute('aria-activedescendant');
 
-  if (statusEl && statusEl.textContent) {
+  if (statusEl?.textContent) {
     statusEl.textContent = '';
   }
   if (statusEl) {
@@ -230,7 +233,7 @@ function announceAutocompleteStatus(statusEl, message) {
   statusEl.textContent = message;
 }
 
-function setAutocompleteActiveIndex(ac, queryBox, index, announce = false, statusEl = null) {
+function setAutocompleteActiveIndex(ac, queryBox, index, announce = false, statusEl = null, prefixMessage = '') {
   if (!ac || !queryBox) {
     return;
   }
@@ -238,11 +241,13 @@ function setAutocompleteActiveIndex(ac, queryBox, index, announce = false, statu
   const options = ac.querySelectorAll('[role="option"]');
   if (!options.length) {
     ac.dataset.activeIndex = '-1';
+    queryBox.removeAttribute('aria-activedescendant');
     return;
   }
 
   const clamped = Math.max(0, Math.min(index, options.length - 1));
   ac.dataset.activeIndex = String(clamped);
+  ac.setAttribute('aria-hidden', 'false');
 
   options.forEach((option, idx) => {
     const isActive = idx === clamped;
@@ -251,10 +256,13 @@ function setAutocompleteActiveIndex(ac, queryBox, index, announce = false, statu
   });
 
   const activeOption = options[clamped];
+  queryBox.setAttribute('aria-activedescendant', activeOption.id);
   activeOption.scrollIntoView({ block: 'nearest' });
 
   if (announce && statusEl) {
-    announceAutocompleteStatus(statusEl, `${activeOption.textContent}, ${clamped + 1} of ${options.length}.`);
+    const label = activeOption.dataset.value || activeOption.textContent || '';
+    const prefix = prefixMessage ? `${prefixMessage} ` : '';
+    announceAutocompleteStatus(statusEl, `${prefix}Current suggestion ${label}, ${clamped + 1} of ${options.length}. Use Up and Down arrows to review. Press Right Arrow or Enter to accept.`);
   }
 }
 
@@ -563,32 +571,6 @@ async function triggerSelectFlow(textarea) {
   });
 }
 
-function handleAutocompleteTabSelection(e, ac) {
-  if (e.key !== 'Tab' || e.shiftKey || ac.style.display !== 'block') {
-    return false;
-  }
-
-  // Let normal focus traversal work unless the user is actively navigating
-  // autocomplete options with the keyboard.
-  if (ac.dataset.keyboardNav !== 'true') {
-    return false;
-  }
-
-  e.preventDefault();
-  const options = ac.querySelectorAll('[role="option"]');
-  if (!options.length) {
-    return true;
-  }
-
-  const activeIndex = Number.parseInt(ac.dataset.activeIndex || '-1', 10);
-  const chosenIndex = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex : 0;
-  const chosen = options[Math.min(chosenIndex, options.length - 1)];
-  if (chosen) {
-    chosen.click();
-  }
-  return true;
-}
-
 function applySelectedFieldsToQuery(textarea, text, cursorPos, selectedFields, dbType) {
   const beforeCursor = text.substring(0, cursorPos);
   const afterCursor = text.substring(cursorPos);
@@ -600,6 +582,22 @@ function applySelectedFieldsToQuery(textarea, text, cursorPos, selectedFields, d
   textarea.value = beforeWord + joinedFields + afterCursor;
   textarea.selectionStart = textarea.selectionEnd = beforeWord.length + joinedFields.length;
   textarea.focus();
+}
+
+function acceptAutocompleteSelection(ac, activeIndex) {
+  const options = ac.querySelectorAll('[role="option"]');
+  if (!options.length) {
+    return false;
+  }
+
+  const chosenIndex = Number.isFinite(activeIndex) && activeIndex >= 0 ? activeIndex : 0;
+  const chosen = options[Math.min(chosenIndex, options.length - 1)];
+  if (!chosen) {
+    return false;
+  }
+
+  chosen.click();
+  return true;
 }
 
 async function handleCtrlSpaceFieldSelection(e) {
@@ -750,14 +748,15 @@ export function initializeEventHandlers() {
       }
 
       if (e.key === 'Enter' && options.length) {
-        if (Number.isFinite(activeIndex) && activeIndex >= 0) {
+        if (Number.isFinite(activeIndex) && activeIndex >= 0 && acceptAutocompleteSelection(ac, activeIndex)) {
           e.preventDefault();
-          const chosen = options[Math.min(activeIndex, options.length - 1)];
-          if (chosen) {
-            chosen.click();
-          }
           return;
         }
+      }
+
+      if (e.key === 'ArrowRight' && acceptAutocompleteSelection(ac, activeIndex)) {
+        e.preventDefault();
+        return;
       }
 
       if (e.key === 'Escape') {
@@ -765,10 +764,6 @@ export function initializeEventHandlers() {
         hideAutocomplete(ac, queryBox, status);
         return;
       }
-    }
-
-    if (handleAutocompleteTabSelection(e, ac)) {
-      return;
     }
 
     await handleCtrlSpaceFieldSelection(e);
@@ -815,13 +810,13 @@ export function initializeEventHandlers() {
     const topSuggestions = suggestions.slice(0, AUTOCOMPLETE_MAX_ITEMS);
     ac.innerHTML = topSuggestions.map((s, idx) => {
       const optionId = `autocomplete-option-${idx}`;
-      return `<div id="${optionId}" class="autocomplete-option" role="option" aria-selected="false" tabindex="-1" data-value="${s}" title="${s}" aria-label="SQL suggestion ${idx + 1}: ${s}">${s}</div>`;
+      return `<div id="${optionId}" class="autocomplete-option" role="option" aria-selected="false" tabindex="-1" data-value="${s}" title="${s}" aria-label="SQL suggestion ${idx + 1}: ${s}. Press Right Arrow or Enter to accept."><span class="autocomplete-option-label">${s}</span><span class="autocomplete-option-marker" aria-hidden="true"><i class="bi bi-arrow-right-square"></i></span></div>`;
     }).join('');
     ac.style.display = 'block';
     ac.dataset.keyboardNav = 'false';
+    ac.setAttribute('aria-hidden', 'false');
 
-    announceAutocompleteStatus(status, `${topSuggestions.length} suggestions available for ${currentWord}. Use up and down arrows to review, Enter or Tab to select.`);
-    setAutocompleteActiveIndex(ac, queryBox, 0, false, status);
+    setAutocompleteActiveIndex(ac, queryBox, 0, true, status, `${topSuggestions.length} suggestions available for ${currentWord}.`);
 
     ac.querySelectorAll('.autocomplete-option').forEach((div) => {
       div.addEventListener('mousedown', (evt) => {
@@ -981,6 +976,7 @@ document.addEventListener('DOMContentLoaded', function() {
   startLogMaintenanceMonitor();
   loadConnections();
   initializeEventHandlers();
+  initializeAiAssistant();
   initializeLogsTab();
 
   const retryButton = document.getElementById('retryServerConnection');
@@ -998,6 +994,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.visibilityState === 'visible') {
       checkServerHealth();
     }
+  });
+
+  document.addEventListener('open-settings-modal', () => {
+    showSettingsModal();
   });
   
   // Add connection button needs special handling since it's dynamically created

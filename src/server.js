@@ -19,7 +19,7 @@
 
 import { connectDB } from "./db/index.js";
 import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, getLogMaintenanceStatus, startLogMaintenanceTask, getLogTimelinePresets, setLogTimelinePreset } from "./db/sqlite.js";
-import { addConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
+import { addConnection, getConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +59,12 @@ function resolveAppVersion() {
 }
 
 const APP_VERSION = resolveAppVersion();
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+const OLLAMA_STATUS_TIMEOUT_MS = 2500;
+const OLLAMA_CHAT_TIMEOUT_MS = 45000;
+//Forbidden Table Scemas for the AI
+const FORBIDDEN_AI_SCHEMAS = new Set(['BUS']);
+const PREFERRED_AI_SCHEMAS = ['HR', 'CORE'];
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
@@ -86,6 +92,506 @@ function normalizeRunQueryText(text) {
     .replaceAll(/[\u201C\u201D\u201E\u201F]/g, '"');
 }
 
+function buildOllamaUrl(relativePath) {
+  return new URL(relativePath, OLLAMA_BASE_URL).toString();
+}
+
+async function fetchOllamaJson(relativePath, { method = 'GET', body = null, timeoutMs = OLLAMA_STATUS_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(buildOllamaUrl(relativePath), {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama request failed with status ${response.status}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function getOllamaStatus() {
+  try {
+    const payload = await fetchOllamaJson('/api/tags');
+    const models = Array.isArray(payload?.models)
+      ? payload.models.map((model) => ({
+          name: model?.name || '',
+          size: Number.isFinite(model?.size) ? model.size : null,
+          modifiedAt: model?.modified_at || null
+        })).filter((model) => model.name)
+      : [];
+
+    return {
+      online: true,
+      models,
+      defaultModel: models[0]?.name || null,
+      baseUrl: OLLAMA_BASE_URL
+    };
+  } catch (error) {
+    return {
+      online: false,
+      models: [],
+      defaultModel: null,
+      baseUrl: OLLAMA_BASE_URL,
+      detail: error?.message || String(error)
+    };
+  }
+}
+
+function normalizeAiConversation(conversation) {
+  if (!Array.isArray(conversation)) {
+    return [];
+  }
+
+  return conversation
+    .map((entry) => ({
+      role: entry?.role === 'assistant' ? 'assistant' : 'user',
+      content: String(entry?.content || '').trim()
+    }))
+    .filter((entry) => entry.content);
+}
+
+function getLatestUserMessage(conversation) {
+  const normalized = normalizeAiConversation(conversation);
+  for (let index = normalized.length - 1; index >= 0; index--) {
+    if (normalized[index].role === 'user') {
+      return normalized[index].content;
+    }
+  }
+  return '';
+}
+
+function getConversationText(conversation) {
+  return normalizeAiConversation(conversation)
+    .map((entry) => entry.content)
+    .join(' ')
+    .trim();
+}
+
+function normalizeSearchToken(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function extractSearchTokens(text) {
+  const matches = String(text || '').toLowerCase().match(/[a-z0-9_]{3,}/g) || [];
+  const stopWords = new Set([
+    'what', 'which', 'tell', 'show', 'give', 'from', 'with', 'that', 'this', 'there', 'have',
+    'into', 'about', 'would', 'could', 'should', 'where', 'when', 'then', 'they', 'them',
+    'database', 'table', 'tables', 'field', 'fields', 'query'
+  ]);
+
+  return Array.from(new Set(matches.filter((token) => !stopWords.has(token))));
+}
+
+function isForbiddenAiTable(tableName) {
+  const [schemaName] = String(tableName || '').split('.');
+  return FORBIDDEN_AI_SCHEMAS.has(schemaName.toUpperCase());
+}
+
+function getAiSchemaPriority(tableName) {
+  const [schemaName] = String(tableName || '').split('.');
+  const normalizedSchema = schemaName.toUpperCase();
+  const index = PREFERRED_AI_SCHEMAS.indexOf(normalizedSchema);
+  if (index === -1) {
+    return 0;
+  }
+
+  return (PREFERRED_AI_SCHEMAS.length - index) * 40;
+}
+
+function extractMentionedTables(schema, conversation) {
+  const conversationText = getConversationText(conversation).toLowerCase();
+  if (!conversationText) {
+    return new Set();
+  }
+
+  return new Set(
+    Object.keys(schema || {}).filter((tableName) => {
+      return !isForbiddenAiTable(tableName) && conversationText.includes(tableName.toLowerCase());
+    })
+  );
+}
+
+function scoreSchemaEntry(tableName, columns, tokens) {
+  const haystack = `${tableName} ${Array.isArray(columns) ? columns.join(' ') : ''}`.toLowerCase();
+  const normalizedColumns = Array.isArray(columns) ? columns.map((column) => String(column).toLowerCase()) : [];
+  const hasEmployeeSignal = normalizedColumns.some((column) => column.includes('employee')) || tableName.toLowerCase().includes('employee');
+  const hasComponentSignal = normalizedColumns.some((column) => column.includes('component')) || tableName.toLowerCase().includes('component');
+  let score = 0;
+
+  for (const token of tokens) {
+    if (tableName.toLowerCase().includes(token)) {
+      score += 8;
+    }
+
+    for (const column of columns) {
+      if (String(column).toLowerCase().includes(token)) {
+        score += 3;
+      }
+    }
+  }
+
+  if (haystack.includes('employee')) score += 4;
+  if (haystack.includes('component')) score += 4;
+  if (haystack.includes('department')) score += 2;
+  if (haystack.includes('name')) score += 1;
+  if (tokens.includes('employee') || tokens.includes('employees')) {
+    if (hasEmployeeSignal) score += 18;
+    if (normalizedColumns.some((column) => column.includes('name') || column.includes('email') || column.includes('title'))) score += 6;
+  }
+  if (tokens.includes('component')) {
+    if (hasComponentSignal) score += 18;
+    if (normalizedColumns.some((column) => column.includes('acronym') || column.includes('fullcomponent'))) score += 6;
+  }
+  if ((tokens.includes('employee') || tokens.includes('employees')) && tokens.includes('component') && hasEmployeeSignal && hasComponentSignal) {
+    score += 24;
+  }
+
+  return score;
+}
+
+function selectRelevantColumns(tableName, columns, tokens, requestedColumns, isExplicitTable) {
+  const normalizedRequested = new Set(requestedColumns.map((column) => normalizeSearchToken(column)));
+  const selected = [];
+
+  for (const column of columns) {
+    const normalizedColumn = normalizeSearchToken(column);
+    const matchesRequested = normalizedRequested.has(normalizedColumn);
+    const matchesSearch = tokens.some((token) => normalizedColumn.includes(normalizeSearchToken(token)));
+    const isUsefulIdentity = /identifier|name|moniker|title|email|component|office|group|division/i.test(column);
+
+    if (matchesRequested || matchesSearch || (isExplicitTable && isUsefulIdentity)) {
+      selected.push(column);
+    }
+  }
+
+  const deduped = Array.from(new Set(selected));
+  if (deduped.length > 0) {
+    return deduped.slice(0, 18);
+  }
+
+  return columns.slice(0, Math.min(columns.length, 12));
+}
+
+function buildRelevantSchemaSubset(schema, conversation) {
+  const entries = Object.entries(schema || {}).filter(([tableName]) => !isForbiddenAiTable(tableName));
+  const latestUserMessage = getLatestUserMessage(conversation);
+  const conversationText = getConversationText(conversation);
+  const tokens = extractSearchTokens(`${conversationText} ${latestUserMessage}`);
+  const mentionedTables = extractMentionedTables(schema, conversation);
+
+  const ranked = entries
+    .map(([tableName, columns]) => ({
+      tableName,
+      columns,
+      score: scoreSchemaEntry(tableName, columns, tokens)
+        + getAiSchemaPriority(tableName)
+        + (mentionedTables.has(tableName) ? 1000 : 0)
+    }))
+    .sort((left, right) => right.score - left.score || left.tableName.localeCompare(right.tableName));
+
+  const requestedColumns = inferRequestedColumns({ relevantTables: ranked }, conversation);
+  const selected = ranked.filter((entry) => entry.score > 0).slice(0, mentionedTables.size > 0 ? 4 : 8);
+  const fallback = selected.length ? selected : ranked.slice(0, mentionedTables.size > 0 ? 4 : 8);
+
+  return {
+    latestUserMessage,
+    tokens,
+    totalTables: entries.length,
+    requestedColumns,
+    mentionedTables: Array.from(mentionedTables),
+    relevantTables: fallback.map((entry) => ({
+      tableName: entry.tableName,
+      columns: selectRelevantColumns(entry.tableName, entry.columns, tokens, requestedColumns, mentionedTables.has(entry.tableName)),
+      totalColumns: entry.columns.length,
+      score: entry.score
+    }))
+  };
+}
+
+function inferRequestedColumns(relevantSchema, conversation) {
+  const latestUserMessage = getLatestUserMessage(conversation);
+  const messageTokens = new Set(
+    extractSearchTokens(latestUserMessage)
+      .flatMap((token) => {
+        const normalized = normalizeSearchToken(token);
+        if (!normalized) return [];
+        const singular = normalized.endsWith('s') ? normalized.slice(0, -1) : normalized;
+        return Array.from(new Set([normalized, singular].filter(Boolean)));
+      })
+  );
+
+  const requested = new Map();
+  for (const entry of relevantSchema.relevantTables) {
+    for (const column of entry.columns) {
+      const normalizedColumn = normalizeSearchToken(column);
+      if (!normalizedColumn) {
+        continue;
+      }
+
+      if (messageTokens.has(normalizedColumn)) {
+        requested.set(normalizedColumn, column);
+      }
+    }
+  }
+
+  return Array.from(requested.values());
+}
+
+function getSqlDialectRules(connectionType) {
+  if (connectionType === 'mssql') {
+    return [
+      'Dialect rules: this is Microsoft SQL Server.',
+      'Use SELECT TOP (n) for row limits. Never use LIMIT.',
+      'Use schema-qualified table names when available.',
+      'Do not use PostgreSQL or SQLite-only syntax.'
+    ];
+  }
+
+  if (connectionType === 'postgres') {
+    return [
+      'Dialect rules: this is PostgreSQL.',
+      'LIMIT is allowed.',
+      'Use double quotes only when needed for identifiers.'
+    ];
+  }
+
+  return [
+    'Dialect rules: use syntax valid for the current database type only.'
+  ];
+}
+
+function normalizeSchemaIdentifier(value) {
+  return String(value || '')
+    .replaceAll(/[\[\]"`]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function extractReferencedTables(sql) {
+  const matches = String(sql || '').matchAll(/\b(?:FROM|JOIN|UPDATE|INTO)\s+([\[\]"`A-Za-z0-9_.]+)/gi);
+  return Array.from(matches, (match) => match[1]).filter(Boolean);
+}
+
+function validateGeneratedSql(sql, schema, { connectionType = 'sqlite', requestedColumns = [] } = {}) {
+  const referencedTables = extractReferencedTables(sql);
+  const issues = [];
+  if (!referencedTables.length) {
+    return { valid: true, unknownTables: [], referencedTables, issues };
+  }
+
+  const forbiddenTables = referencedTables.filter((tableName) => isForbiddenAiTable(normalizeSchemaIdentifier(tableName)));
+  const available = new Set(
+    Object.keys(schema || {})
+      .filter((tableName) => !isForbiddenAiTable(tableName))
+      .map((tableName) => normalizeSchemaIdentifier(tableName))
+  );
+  const unknownTables = referencedTables.filter((tableName) => !available.has(normalizeSchemaIdentifier(tableName)));
+
+  if (connectionType === 'mssql' && /\bLIMIT\b/i.test(sql)) {
+    issues.push('SQL Server does not support LIMIT; use TOP instead.');
+  }
+
+  if (requestedColumns.length > 0 && /\bSELECT\s+DISTINCT\s+\*/i.test(sql) || requestedColumns.length > 0 && /\bSELECT\s+\*/i.test(sql)) {
+    issues.push(`The user asked for specific columns (${requestedColumns.join(', ')}), so SELECT * is too broad.`);
+  }
+
+  if (requestedColumns.length > 0) {
+    const normalizedSql = normalizeSearchToken(sql);
+    const missingRequestedColumns = requestedColumns.filter((column) => !normalizedSql.includes(normalizeSearchToken(column)));
+    if (missingRequestedColumns.length === requestedColumns.length) {
+      issues.push(`The SQL does not include the requested column(s): ${requestedColumns.join(', ')}.`);
+    }
+  }
+
+  return {
+    valid: unknownTables.length === 0 && forbiddenTables.length === 0 && issues.length === 0,
+    unknownTables: [...unknownTables, ...forbiddenTables],
+    referencedTables,
+    issues
+  };
+}
+
+function extractJsonObject(text) {
+  const trimmed = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const withoutFence = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  const start = withoutFence.indexOf('{');
+  const end = withoutFence.lastIndexOf('}');
+
+  if (start >= 0 && end > start) {
+    return withoutFence.slice(start, end + 1);
+  }
+
+  return withoutFence;
+}
+
+function parseAiDecision(rawContent) {
+  const candidate = extractJsonObject(rawContent);
+
+  try {
+    const parsed = JSON.parse(candidate);
+    const status = parsed?.status === 'clarify' ? 'clarify' : 'ready';
+    return {
+      status,
+      question: String(parsed?.question || '').trim(),
+      sql: status === 'clarify' ? '' : String(parsed?.sql || '').trim(),
+      assumptions: Array.isArray(parsed?.assumptions) ? parsed.assumptions.map((item) => String(item).trim()).filter(Boolean) : [],
+      explanation: String(parsed?.explanation || '').trim()
+    };
+  } catch {
+    const normalized = String(rawContent || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    const sqlMatch = normalized.match(/(?:^|\n)\s*((SELECT|WITH)[\s\S]*?)\s*;?\s*$/i);
+    if (sqlMatch) {
+      return {
+        status: 'ready',
+        question: '',
+        sql: sqlMatch[1].trim(),
+        assumptions: [],
+        explanation: 'Using the most likely employee-related table based on the current schema.'
+      };
+    }
+
+    if (normalized) {
+      return {
+        status: 'clarify',
+        question: normalized,
+        sql: '',
+        assumptions: [],
+        explanation: ''
+      };
+    }
+
+    return {
+      status: 'clarify',
+      question: 'I need a bit more detail before I can build a reliable query. Which table or result columns should I use?',
+      sql: '',
+      assumptions: [],
+      explanation: ''
+    };
+  }
+}
+
+function buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, currentQuery, requestedColumns }) {
+  const schemaJson = JSON.stringify(relevantSchema.relevantTables, null, 2);
+  const currentQueryText = currentQuery ? `Current query box contents:\n${currentQuery}` : 'Current query box contents: empty';
+  const requestedColumnText = requestedColumns.length
+    ? `User-requested columns or fields: ${requestedColumns.join(', ')}`
+    : 'User-requested columns or fields: none explicitly named';
+
+  return [
+    'You are the SQL planning assistant for PythiaJS.',
+    `Current connection id: ${connectionId}`,
+    `Current connection type: ${connectionType}`,
+    currentQueryText,
+    `Database contains ${relevantSchema.totalTables} tables. The schema excerpt below has already been ranked for relevance to the latest user request.`,
+    'Use only the provided schema. Never invent table names or columns.',
+    'If one table is clearly the best match, choose it and write the query. Do not ask the user which table to use when the schema excerpt already shows an obvious employee-related table.',
+    'If the request is ambiguous, missing needed columns, or multiple tables are plausible, ask one short clarifying question.',
+    'If you have enough information, return a runnable SQL query for the current database type.',
+    'Prefer the narrowest useful select list. Do not use SELECT * when the user asks for a specific field like Moniker, Title, Name, Email, or Identifier.',
+    'Return JSON only with this exact shape:',
+    '{"status":"ready"|"clarify","question":"","sql":"","assumptions":[""],"explanation":""}',
+    'When status is "clarify", fill question and leave sql empty.',
+    'When status is "ready", fill sql and keep question empty.',
+    'Prefer SELECT queries unless the user explicitly asks to modify data.',
+    ...getSqlDialectRules(connectionType),
+    `Latest user message: ${relevantSchema.latestUserMessage || 'n/a'}`,
+    `Search tokens: ${relevantSchema.tokens.join(', ') || 'none'}`,
+    requestedColumnText,
+    'Relevant schema excerpt:',
+    schemaJson
+  ].join('\n\n');
+}
+
+async function requestAiDecision(model, messages) {
+  const response = await fetchOllamaJson('/api/chat', {
+    method: 'POST',
+    timeoutMs: OLLAMA_CHAT_TIMEOUT_MS,
+    body: {
+      model,
+      stream: false,
+      format: {
+        type: 'object',
+        properties: {
+          status: { type: 'string' },
+          question: { type: 'string' },
+          sql: { type: 'string' },
+          assumptions: { type: 'array', items: { type: 'string' } },
+          explanation: { type: 'string' }
+        },
+        required: ['status', 'question', 'sql', 'assumptions', 'explanation']
+      },
+      messages,
+      options: {
+        temperature: 0.1
+      }
+    }
+  });
+
+  return parseAiDecision(response?.message?.content || '');
+}
+
+async function askOllamaForSql({ model, connectionId, connectionType, schema, conversation, currentQuery }) {
+  const relevantSchema = buildRelevantSchemaSubset(schema, conversation);
+  const requestedColumns = relevantSchema.requestedColumns || inferRequestedColumns(relevantSchema, conversation);
+  const messages = [
+    {
+      role: 'system',
+      content: buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, currentQuery, requestedColumns })
+    },
+    ...normalizeAiConversation(conversation)
+  ];
+
+  let decision = await requestAiDecision(model, messages);
+  if (decision.status === 'ready' && decision.sql) {
+    const validation = validateGeneratedSql(decision.sql, schema, { connectionType, requestedColumns });
+    if (!validation.valid) {
+      const repairPrompt = [
+        'Your previous SQL does not satisfy the real schema or dialect requirements.',
+        validation.unknownTables.length ? `Unknown or forbidden table references: ${validation.unknownTables.join(', ')}` : 'Unknown or forbidden table references: none',
+        validation.issues.length ? `Additional SQL issues: ${validation.issues.join(' ')}` : 'Additional SQL issues: none',
+        'Rewrite the SQL using only these exact available tables and their exact columns:',
+        JSON.stringify(relevantSchema.relevantTables, null, 2),
+        requestedColumns.length ? `The user explicitly asked for these fields, so include them if they exist: ${requestedColumns.join(', ')}` : 'The user did not explicitly ask for a named field.',
+        'If you still cannot produce reliable SQL from this real schema subset, return status "clarify" and ask one precise question.',
+        'Do not invent schemas, table names, columns, or joins.',
+        ...getSqlDialectRules(connectionType)
+      ].join('\n\n');
+
+      decision = await requestAiDecision(model, [
+        ...messages,
+        { role: 'assistant', content: JSON.stringify(decision) },
+        { role: 'user', content: repairPrompt }
+      ]);
+
+      const repairedValidation = decision.status === 'ready' && decision.sql
+        ? validateGeneratedSql(decision.sql, schema, { connectionType, requestedColumns })
+        : { valid: true, unknownTables: [], issues: [] };
+
+      if (decision.status === 'ready' && !repairedValidation.valid) {
+        const candidateTables = relevantSchema.relevantTables.map((entry) => entry.tableName).slice(0, 5);
+        return {
+          status: 'clarify',
+          question: `I found likely tables in this area: ${candidateTables.join(', ')}. Which one should I use for the employee lookup?`,
+          sql: '',
+          assumptions: [],
+          explanation: ''
+        };
+      }
+    }
+  }
+
+  return decision;
+}
+
 async function getConnectionSchema(id) {
   try {
     if (id === 'default') {
@@ -102,9 +608,9 @@ async function getConnectionSchema(id) {
     const conns = getConnections();
     let conn = conns.find(c => c.id === id);
     
-    // If not in database, check if it exists in the dynamic connections map
+    // Fall back to the live connection manager for non-persisted or already-open connections.
     if (!conn) {
-      const dynamicConn = connections.get(id);
+      const dynamicConn = getConnection(id);
       if (dynamicConn) {
         conn = { id, type: dynamicConn.type, config: JSON.stringify(dynamicConn.config) };
       } else {
@@ -348,6 +854,16 @@ function createServer(port) {
       });
     }
 
+    if (url.pathname === "/script/ai.js") {
+      const aiJs = readFileSync(assetPath("src/script/ai.js"), "utf-8");
+      return new Response(aiJs, {
+        headers: {
+          "Content-Type": "application/javascript",
+          ...corsHeaders
+        }
+      });
+    }
+
     if (url.pathname === "/script/logs.js") {
       const logsJs = readFileSync(assetPath("src/script/logs.js"), "utf-8");
       return new Response(logsJs, {
@@ -421,6 +937,63 @@ function createServer(port) {
       if (url.pathname === "/api/logMaintenanceStatus" && req.method === "GET") {
         const status = getLogMaintenanceStatus();
         return Response.json(status, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/ollama/status" && req.method === "GET") {
+        const status = await getOllamaStatus();
+        return Response.json(status, { headers: corsHeaders });
+      }
+
+      if (url.pathname === "/api/ai/assist" && req.method === "POST") {
+        const { conversation, connection, model, currentQuery } = await req.json();
+        const ollamaStatus = await getOllamaStatus();
+
+        if (!ollamaStatus.online) {
+          return Response.json({ error: 'Ollama is offline.' }, { headers: corsHeaders });
+        }
+
+        const selectedModel = typeof model === 'string' && model.trim()
+          ? model.trim()
+          : ollamaStatus.defaultModel;
+
+        if (!selectedModel) {
+          return Response.json({ error: 'No Ollama models are available.' }, { headers: corsHeaders });
+        }
+
+        const availableModels = new Set(ollamaStatus.models.map((entry) => entry.name));
+        if (!availableModels.has(selectedModel)) {
+          return Response.json({ error: `Selected Ollama model is unavailable: ${selectedModel}` }, { headers: corsHeaders });
+        }
+
+        const connectionId = connection || 'default';
+        const schema = await getConnectionSchema(connectionId);
+        const connections = getConnections();
+        const connectionRecord = connectionId === 'default'
+          ? { id: 'default', type: 'sqlite' }
+          : connections.find((entry) => entry.id === connectionId);
+        const connectionType = connectionRecord?.type || 'sqlite';
+
+        const decision = await askOllamaForSql({
+          model: selectedModel,
+          connectionId,
+          connectionType,
+          schema,
+          conversation,
+          currentQuery: normalizeRunQueryText(currentQuery || '')
+        });
+
+        logEntry(
+          'info',
+          'ai',
+          decision.status === 'ready' ? 'AI generated SQL' : 'AI asked for clarification',
+          JSON.stringify({ connection: connectionId, model: selectedModel, status: decision.status })
+        );
+
+        return Response.json({
+          ...decision,
+          model: selectedModel,
+          online: true
+        }, { headers: corsHeaders });
       }
 
       if (url.pathname === "/api/runLogMaintenance" && req.method === "POST") {

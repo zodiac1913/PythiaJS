@@ -12,6 +12,7 @@
  */
 // Shared application state
 const DEFAULT_APP_VERSION = 'dev';
+export const OLLAMA_MODEL_STORAGE_KEY = 'pythia.ollama.model';
 
 export const APP_VERSION = typeof globalThis !== 'undefined'
   && typeof globalThis.PYTHIA_VERSION === 'string'
