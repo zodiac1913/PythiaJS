@@ -20,7 +20,7 @@
 import { connectDB } from "./db/index.js";
 import { logQuery, getHistory, deleteHistoryForConnection, logEntry, getLogs, getLogMaintenanceStatus, startLogMaintenanceTask, getLogTimelinePresets, setLogTimelinePreset } from "./db/sqlite.js";
 import { addConnection, getConnection, getConnections, executeQuery, testConnection, updateConnection, deleteConnection } from "./db/connections.js";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
@@ -65,6 +65,26 @@ const OLLAMA_CHAT_TIMEOUT_MS = 45000;
 //Forbidden Table Scemas for the AI
 const FORBIDDEN_AI_SCHEMAS = new Set(['BUS']);
 const PREFERRED_AI_SCHEMAS = ['HR', 'CORE'];
+const AI_SCHEMA_MEMORY_PATH = assetPath('docs/ai-schema-memory.json');
+const READ_ONLY_SQL_START = /^\s*(SELECT|WITH|SHOW|DESCRIBE|PRAGMA)\b/i;
+const WRITE_SQL_KEYWORDS = /\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|GRANT|REVOKE|EXEC(?:UTE)?|CALL)\b/i;
+
+const QUERY_TERM_ALIASES = {
+  xo: ['executive', 'officer', 'executiveofficer', 'deputy'],
+  xos: ['executive', 'officers', 'executiveofficer', 'deputy'],
+  executive: ['xo', 'officer', 'leadership'],
+  officers: ['officer', 'executive', 'leadership'],
+  leadership: ['executive', 'officer', 'xo'],
+  active: ['deactivated', 'status', 'enabled'],
+  manager: ['ismanager', 'managerrole', 'hasmanagerrole']
+};
+
+const DEFAULT_AI_SCHEMA_MEMORY = {
+  tokenToTables: {},
+  tokenToColumns: {}
+};
+
+let aiSchemaMemory = null;
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
@@ -180,15 +200,284 @@ function normalizeSearchToken(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function splitIdentifierParts(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return [];
+  }
+
+  const spaced = raw
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-.]+/g, ' ')
+    .toLowerCase();
+
+  return spaced
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2);
+}
+
+function buildSearchTokenSet(text) {
+  const baseParts = splitIdentifierParts(text);
+  const tokens = new Set();
+
+  for (const part of baseParts) {
+    tokens.add(part);
+    const normalized = normalizeSearchToken(part);
+    if (normalized) {
+      tokens.add(normalized);
+    }
+  }
+
+  for (let index = 0; index < baseParts.length - 1; index++) {
+    const combined = normalizeSearchToken(`${baseParts[index]}${baseParts[index + 1]}`);
+    if (combined.length >= 4) {
+      tokens.add(combined);
+    }
+  }
+
+  return tokens;
+}
+
+function userAskedForManagerRole(text) {
+  const tokens = buildSearchTokenSet(text);
+  return tokens.has('manager') || tokens.has('managers');
+}
+
+function isManagerRelationshipColumn(columnName) {
+  const normalized = normalizeSearchToken(columnName);
+  if (!normalized.includes('manager')) {
+    return false;
+  }
+
+  const managerRoleSignals = ['ismanager', 'hasmanagerrole', 'managerrole', 'managerflag'];
+  if (managerRoleSignals.some((signal) => normalized.includes(signal))) {
+    return false;
+  }
+
+  const managerRelationshipSignals = ['manageridentifier', 'managerid', 'manageremployeeid', 'managernumber'];
+  return managerRelationshipSignals.some((signal) => normalized.includes(signal));
+}
+
 function extractSearchTokens(text) {
-  const matches = String(text || '').toLowerCase().match(/[a-z0-9_]{3,}/g) || [];
+  const matches = Array.from(buildSearchTokenSet(text));
   const stopWords = new Set([
     'what', 'which', 'tell', 'show', 'give', 'from', 'with', 'that', 'this', 'there', 'have',
     'into', 'about', 'would', 'could', 'should', 'where', 'when', 'then', 'they', 'them',
-    'database', 'table', 'tables', 'field', 'fields', 'query'
+    'database', 'table', 'tables', 'field', 'fields', 'query', 'only', 'still', 'work', 'works',
+    'using', 'use', 'need', 'please', 'find', 'list', 'all', 'any'
   ]);
 
-  return Array.from(new Set(matches.filter((token) => !stopWords.has(token))));
+  return Array.from(new Set(matches.filter((token) => token.length >= 2 && !stopWords.has(token))));
+}
+
+function isLearnableToken(token) {
+  const normalized = normalizeSearchToken(token);
+  if (!normalized || normalized.length < 3) {
+    return false;
+  }
+
+  const blocked = new Set([
+    'what', 'which', 'tell', 'show', 'give', 'from', 'with', 'that', 'this', 'there', 'have',
+    'into', 'about', 'would', 'could', 'should', 'where', 'when', 'then', 'they', 'them',
+    'database', 'table', 'tables', 'field', 'fields', 'query', 'only', 'still', 'work', 'works',
+    'using', 'use', 'need', 'please', 'find', 'list', 'all', 'any', 'the', 'and', 'are'
+  ]);
+
+  return !blocked.has(normalized);
+}
+
+function expandSearchTokens(tokens) {
+  const expanded = new Set(tokens || []);
+
+  for (const token of tokens || []) {
+    const aliases = QUERY_TERM_ALIASES[token] || [];
+    for (const alias of aliases) {
+      expanded.add(alias);
+      const normalized = normalizeSearchToken(alias);
+      if (normalized) {
+        expanded.add(normalized);
+      }
+    }
+  }
+
+  return Array.from(expanded);
+}
+
+function buildSchemaDiscoveryHints(schema, tokens) {
+  const wanted = new Set((tokens || []).map((token) => normalizeSearchToken(token)).filter(Boolean));
+  const hintsByToken = new Map();
+
+  for (const rawToken of wanted) {
+    hintsByToken.set(rawToken, { token: rawToken, tables: new Set(), columns: new Set() });
+  }
+
+  for (const [tableName, columns] of Object.entries(schema || {})) {
+    if (isForbiddenAiTable(tableName)) {
+      continue;
+    }
+
+    const tableParts = new Set(splitIdentifierParts(tableName).map((part) => normalizeSearchToken(part)));
+    const normalizedTableName = normalizeSearchToken(tableName);
+    for (const [token, bucket] of hintsByToken) {
+      if (tableParts.has(token) || normalizedTableName.includes(token) || token.includes(normalizedTableName)) {
+        bucket.tables.add(tableName);
+      }
+    }
+
+    for (const column of columns || []) {
+      const normalizedColumn = normalizeSearchToken(column);
+      const columnParts = new Set(splitIdentifierParts(column).map((part) => normalizeSearchToken(part)));
+
+      for (const [token, bucket] of hintsByToken) {
+        if (normalizedColumn.includes(token) || token.includes(normalizedColumn) || columnParts.has(token)) {
+          bucket.columns.add(`${tableName}.${column}`);
+          bucket.tables.add(tableName);
+        }
+      }
+    }
+  }
+
+  return Array.from(hintsByToken.values())
+    .map((entry) => ({
+      token: entry.token,
+      tables: Array.from(entry.tables).slice(0, 6),
+      columns: Array.from(entry.columns).slice(0, 10)
+    }))
+    .filter((entry) => entry.tables.length || entry.columns.length)
+    .slice(0, 10);
+}
+
+function getUnknownSearchTokens(tokens, discoveryHints) {
+  const known = new Set((discoveryHints || []).map((hint) => hint.token));
+  return (tokens || []).filter((token) => !known.has(normalizeSearchToken(token)));
+}
+
+function emptyMemoryBucket(bucket) {
+  return !bucket || typeof bucket !== 'object' ? {} : bucket;
+}
+
+function loadAiSchemaMemory() {
+  if (aiSchemaMemory) {
+    return aiSchemaMemory;
+  }
+
+  try {
+    if (!existsSync(AI_SCHEMA_MEMORY_PATH)) {
+      aiSchemaMemory = { ...DEFAULT_AI_SCHEMA_MEMORY };
+      return aiSchemaMemory;
+    }
+
+    const parsed = JSON.parse(readFileSync(AI_SCHEMA_MEMORY_PATH, 'utf-8'));
+    aiSchemaMemory = {
+      tokenToTables: emptyMemoryBucket(parsed?.tokenToTables),
+      tokenToColumns: emptyMemoryBucket(parsed?.tokenToColumns)
+    };
+    return aiSchemaMemory;
+  } catch {
+    aiSchemaMemory = { ...DEFAULT_AI_SCHEMA_MEMORY };
+    return aiSchemaMemory;
+  }
+}
+
+function persistAiSchemaMemory() {
+  const memory = loadAiSchemaMemory();
+  mkdirSync(path.dirname(AI_SCHEMA_MEMORY_PATH), { recursive: true });
+  writeFileSync(AI_SCHEMA_MEMORY_PATH, JSON.stringify(memory, null, 2));
+}
+
+function collectLearnedHints(tokens) {
+  const memory = loadAiSchemaMemory();
+  const hints = [];
+
+  for (const token of tokens) {
+    const tables = memory.tokenToTables[token] || [];
+    const columns = memory.tokenToColumns[token] || [];
+    if (!tables.length && !columns.length) {
+      continue;
+    }
+
+    hints.push({
+      token,
+      tables: tables.slice(0, 3),
+      columns: columns.slice(0, 4)
+    });
+  }
+
+  return hints.slice(0, 8);
+}
+
+function upsertHintValue(memoryBucket, token, value) {
+  if (!token || !value) {
+    return;
+  }
+
+  const existing = Array.isArray(memoryBucket[token]) ? memoryBucket[token] : [];
+  const next = [value, ...existing.filter((item) => item !== value)];
+  memoryBucket[token] = next.slice(0, 8);
+}
+
+function stripIdentifierQuotes(value) {
+  return String(value || '')
+    .replaceAll('[', '')
+    .replaceAll(']', '')
+    .replaceAll('"', '')
+    .replaceAll('`', '');
+}
+
+function extractSqlSelectedColumns(sql) {
+  const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+  if (!/^select\b/i.test(normalizedSql)) {
+    return [];
+  }
+
+  const fromMatch = /\bfrom\b/i.exec(normalizedSql);
+  if (!fromMatch || fromMatch.index <= 0) {
+    return [];
+  }
+
+  let selectClause = normalizedSql.slice(0, fromMatch.index).replace(/^select\s+/i, '').trim();
+  selectClause = selectClause.replace(/^top\s*\(?\d+\)?\s+/i, '').replace(/^distinct\s+/i, '').trim();
+  if (!selectClause || selectClause === '*') {
+    return [];
+  }
+
+  return selectClause
+    .split(',')
+    .map((column) => {
+      const withoutAlias = column.split(/\s+as\s+/i)[0]?.trim() || '';
+      const tail = withoutAlias.split('.').pop() || '';
+      return stripIdentifierQuotes(tail).trim();
+    })
+    .filter(Boolean);
+}
+
+function learnSchemaHintsFromDecision({ latestUserMessage, sql }) {
+  const messageTokens = extractSearchTokens(latestUserMessage)
+    .map((token) => normalizeSearchToken(token))
+    .filter((token) => isLearnableToken(token));
+  if (!messageTokens.length || !sql) {
+    return;
+  }
+
+  const memory = loadAiSchemaMemory();
+  const tableNames = extractReferencedTables(sql).map((table) => stripIdentifierQuotes(table).trim()).filter(Boolean);
+  const columnNames = extractSqlSelectedColumns(sql);
+
+  for (const token of messageTokens) {
+    for (const tableName of tableNames) {
+      upsertHintValue(memory.tokenToTables, token, tableName);
+    }
+    for (const columnName of columnNames) {
+      const managerToken = token === 'manager' || token === 'managers';
+      if (managerToken && isManagerRelationshipColumn(columnName)) {
+        continue;
+      }
+      upsertHintValue(memory.tokenToColumns, token, columnName);
+    }
+  }
+
+  persistAiSchemaMemory();
 }
 
 function isForbiddenAiTable(tableName) {
@@ -228,12 +517,15 @@ function scoreSchemaEntry(tableName, columns, tokens) {
   let score = 0;
 
   for (const token of tokens) {
-    if (tableName.toLowerCase().includes(token)) {
+    const tableParts = splitIdentifierParts(tableName);
+    if (tableName.toLowerCase().includes(token) || tableParts.includes(token)) {
       score += 8;
     }
 
     for (const column of columns) {
-      if (String(column).toLowerCase().includes(token)) {
+      const columnLower = String(column).toLowerCase();
+      const columnParts = splitIdentifierParts(column);
+      if (columnLower.includes(token) || columnParts.includes(token)) {
         score += 3;
       }
     }
@@ -261,12 +553,17 @@ function scoreSchemaEntry(tableName, columns, tokens) {
 function selectRelevantColumns(tableName, columns, tokens, requestedColumns, isExplicitTable) {
   const normalizedRequested = new Set(requestedColumns.map((column) => normalizeSearchToken(column)));
   const selected = [];
+  const managerIntent = tokens.includes('manager') || tokens.includes('managers');
 
   for (const column of columns) {
     const normalizedColumn = normalizeSearchToken(column);
     const matchesRequested = normalizedRequested.has(normalizedColumn);
     const matchesSearch = tokens.some((token) => normalizedColumn.includes(normalizeSearchToken(token)));
     const isUsefulIdentity = /identifier|name|moniker|title|email|component|office|group|division/i.test(column);
+
+    if (managerIntent && isManagerRelationshipColumn(column) && !matchesRequested) {
+      continue;
+    }
 
     if (matchesRequested || matchesSearch || (isExplicitTable && isUsefulIdentity)) {
       selected.push(column);
@@ -285,7 +582,11 @@ function buildRelevantSchemaSubset(schema, conversation) {
   const entries = Object.entries(schema || {}).filter(([tableName]) => !isForbiddenAiTable(tableName));
   const latestUserMessage = getLatestUserMessage(conversation);
   const conversationText = getConversationText(conversation);
-  const tokens = extractSearchTokens(`${conversationText} ${latestUserMessage}`);
+  const baseTokens = extractSearchTokens(`${conversationText} ${latestUserMessage}`);
+  const tokens = expandSearchTokens(baseTokens);
+  const learnedHints = collectLearnedHints(tokens);
+  const discoveryHints = buildSchemaDiscoveryHints(schema, tokens);
+  const unknownTokens = getUnknownSearchTokens(tokens, discoveryHints);
   const mentionedTables = extractMentionedTables(schema, conversation);
 
   const ranked = entries
@@ -293,6 +594,18 @@ function buildRelevantSchemaSubset(schema, conversation) {
       tableName,
       columns,
       score: scoreSchemaEntry(tableName, columns, tokens)
+        + learnedHints.reduce((acc, hint) => {
+          if (hint.tables.includes(tableName)) {
+            return acc + 35;
+          }
+
+          const tableColumns = new Set(columns.map(String));
+          if (hint.columns.some((column) => tableColumns.has(column))) {
+            return acc + 18;
+          }
+
+          return acc;
+        }, 0)
         + getAiSchemaPriority(tableName)
         + (mentionedTables.has(tableName) ? 1000 : 0)
     }))
@@ -304,9 +617,13 @@ function buildRelevantSchemaSubset(schema, conversation) {
 
   return {
     latestUserMessage,
+    baseTokens,
     tokens,
+    unknownTokens,
     totalTables: entries.length,
     requestedColumns,
+    learnedHints,
+    discoveryHints,
     mentionedTables: Array.from(mentionedTables),
     relevantTables: fallback.map((entry) => ({
       tableName: entry.tableName,
@@ -319,8 +636,9 @@ function buildRelevantSchemaSubset(schema, conversation) {
 
 function inferRequestedColumns(relevantSchema, conversation) {
   const latestUserMessage = getLatestUserMessage(conversation);
+  const managerIntent = userAskedForManagerRole(latestUserMessage);
   const messageTokens = new Set(
-    extractSearchTokens(latestUserMessage)
+    Array.from(buildSearchTokenSet(latestUserMessage))
       .flatMap((token) => {
         const normalized = normalizeSearchToken(token);
         if (!normalized) return [];
@@ -337,7 +655,16 @@ function inferRequestedColumns(relevantSchema, conversation) {
         continue;
       }
 
-      if (messageTokens.has(normalizedColumn)) {
+      if (managerIntent && isManagerRelationshipColumn(column)) {
+        continue;
+      }
+
+      const columnParts = splitIdentifierParts(column).map((part) => normalizeSearchToken(part));
+      if (
+        messageTokens.has(normalizedColumn)
+        || columnParts.some((part) => messageTokens.has(part))
+        || Array.from(messageTokens).some((token) => normalizedColumn.includes(token) || token.includes(normalizedColumn))
+      ) {
         requested.set(normalizedColumn, column);
       }
     }
@@ -370,20 +697,44 @@ function getSqlDialectRules(connectionType) {
 }
 
 function normalizeSchemaIdentifier(value) {
-  return String(value || '')
-    .replaceAll(/[\[\]"`]/g, '')
+  return stripIdentifierQuotes(value)
     .trim()
     .toLowerCase();
 }
 
+function isReadOnlySql(sql) {
+  const text = String(sql || '').trim();
+  if (!text) {
+    return false;
+  }
+
+  const withoutComments = text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--.*$/gm, ' ')
+    .trim();
+
+  if (!READ_ONLY_SQL_START.test(withoutComments)) {
+    return false;
+  }
+
+  if (WRITE_SQL_KEYWORDS.test(withoutComments)) {
+    return false;
+  }
+
+  return true;
+}
+
 function extractReferencedTables(sql) {
-  const matches = String(sql || '').matchAll(/\b(?:FROM|JOIN|UPDATE|INTO)\s+([\[\]"`A-Za-z0-9_.]+)/gi);
+  const matches = String(sql || '').matchAll(/\b(?:FROM|JOIN|UPDATE|INTO)\s+([^\s;]+)/gi);
   return Array.from(matches, (match) => match[1]).filter(Boolean);
 }
 
 function validateGeneratedSql(sql, schema, { connectionType = 'sqlite', requestedColumns = [] } = {}) {
   const referencedTables = extractReferencedTables(sql);
   const issues = [];
+  if (!isReadOnlySql(sql)) {
+    issues.push('Only read-only SQL is allowed. Use SELECT/WITH/SHOW/DESCRIBE/PRAGMA and avoid write operations.');
+  }
   if (!referencedTables.length) {
     return { valid: true, unknownTables: [], referencedTables, issues };
   }
@@ -494,9 +845,13 @@ function buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, cur
     `Database contains ${relevantSchema.totalTables} tables. The schema excerpt below has already been ranked for relevance to the latest user request.`,
     'Use only the provided schema. Never invent table names or columns.',
     'If one table is clearly the best match, choose it and write the query. Do not ask the user which table to use when the schema excerpt already shows an obvious employee-related table.',
+    'When user terms are unfamiliar (for example acronyms like XO), use discovery hints to map the term to likely role/title/identifier fields before asking a clarifying question.',
     'If the request is ambiguous, missing needed columns, or multiple tables are plausible, ask one short clarifying question.',
     'If you have enough information, return a runnable SQL query for the current database type.',
+    'Safety requirement: generate read-only SQL only. Never generate INSERT, UPDATE, DELETE, MERGE, DROP, ALTER, TRUNCATE, CREATE, EXEC, or CALL.',
     'Prefer the narrowest useful select list. Do not use SELECT * when the user asks for a specific field like Moniker, Title, Name, Email, or Identifier.',
+    'ManagerIdentifier or ManagerId columns usually identify an employee\'s supervisor and do not mean the employee is a manager.',
+    'For manager counts, prefer explicit role flags (for example IsManager or HasManagerRole) or infer from title only when no explicit role field exists.',
     'Return JSON only with this exact shape:',
     '{"status":"ready"|"clarify","question":"","sql":"","assumptions":[""],"explanation":""}',
     'When status is "clarify", fill question and leave sql empty.',
@@ -505,7 +860,14 @@ function buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, cur
     ...getSqlDialectRules(connectionType),
     `Latest user message: ${relevantSchema.latestUserMessage || 'n/a'}`,
     `Search tokens: ${relevantSchema.tokens.join(', ') || 'none'}`,
+    `Unknown search tokens after schema scan: ${relevantSchema.unknownTokens?.join(', ') || 'none'}`,
     requestedColumnText,
+    relevantSchema.learnedHints?.length
+      ? `Learned schema hints from prior successful queries: ${JSON.stringify(relevantSchema.learnedHints)}`
+      : 'Learned schema hints from prior successful queries: none yet.',
+    relevantSchema.discoveryHints?.length
+      ? `Schema discovery hints for search tokens: ${JSON.stringify(relevantSchema.discoveryHints)}`
+      : 'Schema discovery hints for search tokens: none.',
     'Relevant schema excerpt:',
     schemaJson
   ].join('\n\n');
@@ -587,6 +949,23 @@ async function askOllamaForSql({ model, connectionId, connectionType, schema, co
         };
       }
     }
+  }
+
+  if (decision.status === 'ready' && !isReadOnlySql(decision.sql)) {
+    return {
+      status: 'clarify',
+      question: 'I can only run read-only SQL in this workspace. Please restate the request as a read/report query.',
+      sql: '',
+      assumptions: [],
+      explanation: ''
+    };
+  }
+
+  if (decision.status === 'ready' && decision.sql) {
+    learnSchemaHintsFromDecision({
+      latestUserMessage: relevantSchema.latestUserMessage,
+      sql: decision.sql
+    });
   }
 
   return decision;
@@ -903,6 +1282,11 @@ function createServer(port) {
       if (url.pathname === "/api/runQuery" && req.method === "POST") {
         const { text, connection, connectionConfig } = await req.json();
         const normalizedText = normalizeRunQueryText(text);
+        if (!isReadOnlySql(normalizedText)) {
+          const error = 'Read-only mode is enabled. Only SELECT/WITH/SHOW/DESCRIBE/PRAGMA statements are allowed.';
+          logEntry('warn', 'query', 'Blocked non-read-only SQL', normalizedText, connection);
+          return Response.json({ error }, { status: 200, headers: corsHeaders });
+        }
         console.log('runQuery called with:', { text: normalizedText, connection, connectionConfig: connectionConfig ? 'present' : 'missing' });
         logQuery(normalizedText, connection);
         logEntry('info', 'query', 'Query executed', normalizedText, connection);
