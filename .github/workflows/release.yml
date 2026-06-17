@@ -82,6 +82,13 @@ jobs:
         timeout-minutes: 20
         shell: pwsh
         run: |
+          $bunExecutable = $env:BUN_EXECUTABLE
+          if ($IsWindows -and $bunExecutable -match '^/([a-zA-Z])/(.*)$') {
+            $drive = $matches[1].ToUpper()
+            $rest = $matches[2] -replace '/', '\\'
+            $bunExecutable = "${drive}:\\$rest"
+          }
+
           $buildArgs = @(
             'build'
             '--compile'
@@ -97,7 +104,7 @@ jobs:
             )
           }
 
-          & $env:BUN_EXECUTABLE @buildArgs
+          & $bunExecutable @buildArgs
 
       - name: Stage release files
         shell: pwsh
