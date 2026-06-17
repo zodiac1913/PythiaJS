@@ -1,4 +1,882 @@
 {
-  "tokenToTables": {},
-  "tokenToColumns": {}
+  "tokenToTables": {
+    "can": [
+      "sqlite_sequence"
+    ],
+    "you": [
+      "sqlite_sequence"
+    ],
+    "files": [
+      "sqlite_sequence"
+    ],
+    "memory": [
+      "sqlite_sequence"
+    ],
+    "canyou": [
+      "sqlite_sequence"
+    ],
+    "youuse": [
+      "sqlite_sequence"
+    ],
+    "usefiles": [
+      "sqlite_sequence"
+    ],
+    "filesto": [
+      "sqlite_sequence"
+    ],
+    "togive": [
+      "sqlite_sequence"
+    ],
+    "giveyou": [
+      "sqlite_sequence"
+    ],
+    "youmemory": [
+      "sqlite_sequence"
+    ],
+    "didnt": [
+      "sqlite_sequence"
+    ],
+    "ask": [
+      "sqlite_sequence"
+    ],
+    "asked": [
+      "sqlite_sequence"
+    ],
+    "memories": [
+      "sqlite_sequence"
+    ],
+    "instructions": [
+      "sqlite_sequence"
+    ],
+    "etc": [
+      "sqlite_sequence"
+    ],
+    "file": [
+      "sqlite_sequence"
+    ],
+    "didntask": [
+      "sqlite_sequence"
+    ],
+    "askyou": [
+      "sqlite_sequence"
+    ],
+    "youto": [
+      "sqlite_sequence"
+    ],
+    "todo": [
+      "sqlite_sequence"
+    ],
+    "dothat": [
+      "sqlite_sequence"
+    ],
+    "thatasked": [
+      "sqlite_sequence"
+    ],
+    "askedyou": [
+      "sqlite_sequence"
+    ],
+    "youif": [
+      "sqlite_sequence"
+    ],
+    "ifyou": [
+      "sqlite_sequence"
+    ],
+    "youcan": [
+      "sqlite_sequence"
+    ],
+    "canhave": [
+      "sqlite_sequence"
+    ],
+    "havememories": [
+      "sqlite_sequence"
+    ],
+    "memoriesinstructions": [
+      "sqlite_sequence"
+    ],
+    "instructionsetc": [
+      "sqlite_sequence"
+    ],
+    "etcin": [
+      "sqlite_sequence"
+    ],
+    "infile": [
+      "sqlite_sequence"
+    ],
+    "really": [
+      "sqlite_sequence"
+    ],
+    "stupid": [
+      "sqlite_sequence"
+    ],
+    "areyou": [
+      "sqlite_sequence"
+    ],
+    "youreally": [
+      "sqlite_sequence"
+    ],
+    "reallythis": [
+      "sqlite_sequence"
+    ],
+    "thisstupid": [
+      "sqlite_sequence"
+    ],
+    "how": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "many": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "employees": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "component": [
+      "HR.HR_Employee"
+    ],
+    "dasm": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "howmany": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "manyemployees": [
+      "HR.HR_Employee"
+    ],
+    "employeesare": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "arein": [
+      "HR.HR_Employee"
+    ],
+    "inthe": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "thecomponent": [
+      "HR.HR_Employee"
+    ],
+    "componentdasm": [
+      "HR.HR_Employee"
+    ],
+    "not": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "separated": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "manydasm": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "dasmemployees": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "arethere": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "therethat": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "thatare": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "arenot": [
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Employee"
+    ],
+    "notseparated": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "who": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "employes": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "whoare": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "arethe": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "theemployes": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "employesof": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "ofdasm": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "theemployees": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "employeesof": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory",
+      "HR.HR_Component"
+    ],
+    "monikers": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "division": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "listthe": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "themonikers": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "monikersof": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "ofall": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "allemployees": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "employeesin": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "thedivision": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "divisiondasm": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "ofthe": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "thedasm": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "dasmdivision": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "whatare": [
+      "HR.HR_Component",
+      "HR.HR_Employee"
+    ],
+    "current": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "thecurrent": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "currentnot": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "separatedemployees": [
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
+    ],
+    "moniker": [
+      "HR.HR_Employee"
+    ],
+    "good": [
+      "HR.HR_Employee"
+    ],
+    "monikeris": [
+      "HR.HR_Employee"
+    ],
+    "isgood": [
+      "HR.HR_Employee"
+    ],
+    "oagm": [
+      "HR.HR_Employee"
+    ],
+    "ofoagm": [
+      "HR.HR_Employee"
+    ],
+    "managers": [
+      "HR.HR_Employee"
+    ],
+    "over": [
+      "HR.HR_Employee"
+    ],
+    "years": [
+      "HR.HR_Employee"
+    ],
+    "old": [
+      "HR.HR_Employee"
+    ],
+    "manymanagers": [
+      "HR.HR_Employee"
+    ],
+    "managersare": [
+      "HR.HR_Employee"
+    ],
+    "areover": [
+      "HR.HR_Employee"
+    ],
+    "over45": [
+      "HR.HR_Employee"
+    ],
+    "45years": [
+      "HR.HR_Employee"
+    ],
+    "yearsold": [
+      "HR.HR_Employee"
+    ],
+    "over55": [
+      "HR.HR_Employee"
+    ],
+    "55years": [
+      "HR.HR_Employee"
+    ],
+    "employeesthat": [
+      "HR.HR_Employee"
+    ],
+    "aremanagers": [
+      "HR.HR_Employee"
+    ]
+  },
+  "tokenToColumns": {
+    "can": [
+      "COUNT(name)"
+    ],
+    "you": [
+      "COUNT(name)"
+    ],
+    "files": [
+      "COUNT(name)"
+    ],
+    "memory": [
+      "COUNT(name)"
+    ],
+    "canyou": [
+      "COUNT(name)"
+    ],
+    "youuse": [
+      "COUNT(name)"
+    ],
+    "usefiles": [
+      "COUNT(name)"
+    ],
+    "filesto": [
+      "COUNT(name)"
+    ],
+    "togive": [
+      "COUNT(name)"
+    ],
+    "giveyou": [
+      "COUNT(name)"
+    ],
+    "youmemory": [
+      "COUNT(name)"
+    ],
+    "didnt": [
+      "COUNT(name)"
+    ],
+    "ask": [
+      "COUNT(name)"
+    ],
+    "asked": [
+      "COUNT(name)"
+    ],
+    "memories": [
+      "COUNT(name)"
+    ],
+    "instructions": [
+      "COUNT(name)"
+    ],
+    "etc": [
+      "COUNT(name)"
+    ],
+    "file": [
+      "COUNT(name)"
+    ],
+    "didntask": [
+      "COUNT(name)"
+    ],
+    "askyou": [
+      "COUNT(name)"
+    ],
+    "youto": [
+      "COUNT(name)"
+    ],
+    "todo": [
+      "COUNT(name)"
+    ],
+    "dothat": [
+      "COUNT(name)"
+    ],
+    "thatasked": [
+      "COUNT(name)"
+    ],
+    "askedyou": [
+      "COUNT(name)"
+    ],
+    "youif": [
+      "COUNT(name)"
+    ],
+    "ifyou": [
+      "COUNT(name)"
+    ],
+    "youcan": [
+      "COUNT(name)"
+    ],
+    "canhave": [
+      "COUNT(name)"
+    ],
+    "havememories": [
+      "COUNT(name)"
+    ],
+    "memoriesinstructions": [
+      "COUNT(name)"
+    ],
+    "instructionsetc": [
+      "COUNT(name)"
+    ],
+    "etcin": [
+      "COUNT(name)"
+    ],
+    "infile": [
+      "COUNT(name)"
+    ],
+    "really": [
+      "COUNT(name)"
+    ],
+    "stupid": [
+      "COUNT(name)"
+    ],
+    "areyou": [
+      "COUNT(name)"
+    ],
+    "youreally": [
+      "COUNT(name)"
+    ],
+    "reallythis": [
+      "COUNT(name)"
+    ],
+    "thisstupid": [
+      "COUNT(name)"
+    ],
+    "how": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "many": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "employees": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName"
+    ],
+    "component": [
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "dasm": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "howmany": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "manyemployees": [
+      "COUNT(*)",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "employeesare": [
+      "COUNT(*)",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "arein": [
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "inthe": [
+      "Moniker",
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "thecomponent": [
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "componentdasm": [
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "not": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "separated": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "manydasm": [
+      "COUNT(*)"
+    ],
+    "dasmemployees": [
+      "COUNT(*)"
+    ],
+    "arethere": [
+      "COUNT(*)"
+    ],
+    "therethat": [
+      "COUNT(*)"
+    ],
+    "thatare": [
+      "COUNT(*)"
+    ],
+    "arenot": [
+      "COUNT(*)"
+    ],
+    "notseparated": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "who": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "employes": [
+      "LocalityAreaDescription",
+      "LocalityArea",
+      "EmployeeRemoteWorkSelection",
+      "ProfessionalClassificationDescription",
+      "ProfessionalClassification",
+      "EuaRegion",
+      "DetailOfficeIdentifier",
+      "CareerStartDate"
+    ],
+    "whoare": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "arethe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "theemployes": [
+      "LocalityAreaDescription",
+      "LocalityArea",
+      "EmployeeRemoteWorkSelection",
+      "ProfessionalClassificationDescription",
+      "ProfessionalClassification",
+      "EuaRegion",
+      "DetailOfficeIdentifier",
+      "CareerStartDate"
+    ],
+    "employesof": [
+      "LocalityAreaDescription",
+      "LocalityArea",
+      "EmployeeRemoteWorkSelection",
+      "ProfessionalClassificationDescription",
+      "ProfessionalClassification",
+      "EuaRegion",
+      "DetailOfficeIdentifier",
+      "CareerStartDate"
+    ],
+    "ofdasm": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "theemployees": [
+      "Moniker",
+      "EmployeeIdentifier",
+      "LocalityAreaDescription",
+      "LocalityArea",
+      "EmployeeRemoteWorkSelection",
+      "ProfessionalClassificationDescription",
+      "ProfessionalClassification",
+      "EuaRegion"
+    ],
+    "employeesof": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "monikers": [
+      "Moniker"
+    ],
+    "division": [
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "listthe": [
+      "Moniker"
+    ],
+    "themonikers": [
+      "Moniker"
+    ],
+    "monikersof": [
+      "Moniker"
+    ],
+    "ofall": [
+      "Moniker"
+    ],
+    "allemployees": [
+      "Moniker"
+    ],
+    "employeesin": [
+      "Moniker"
+    ],
+    "thedivision": [
+      "Moniker"
+    ],
+    "divisiondasm": [
+      "Moniker"
+    ],
+    "ofthe": [
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thedasm": [
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "dasmdivision": [
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "whatare": [
+      "Moniker"
+    ],
+    "current": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "thecurrent": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "currentnot": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "separatedemployees": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "FirstLastName",
+      "LastFirstName",
+      "MiddleName",
+      "LastName",
+      "FirstName"
+    ],
+    "moniker": [
+      "Moniker"
+    ],
+    "good": [
+      "Moniker"
+    ],
+    "monikeris": [
+      "Moniker"
+    ],
+    "isgood": [
+      "Moniker"
+    ],
+    "oagm": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "ofoagm": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "managers": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "over": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "years": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "old": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "manymanagers": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "managersare": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "areover": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "over45": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "45years": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "yearsold": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "over55": [
+      "COUNT(*)",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "55years": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "employeesthat": [
+      "COUNT(*)"
+    ],
+    "aremanagers": [
+      "COUNT(*)"
+    ]
+  }
 }

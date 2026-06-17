@@ -116,9 +116,9 @@
             Connections
           </button>
           <ul class="dropdown-menu" id="connectionsList">
-            <li><a class="dropdown-item" href="#" id="addConnection" title="Add New Connection">Add +</a></li>
+            <li><a class="dropdown-item" href="#" id="addConnection" title="Add New Connection" aria-label="Add +">Add +</a></li>
             <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item active" href="#" data-conn="default" title="Internal Database">Internal (SQLite)</a></li>
+            <li><a class="dropdown-item active" href="#" data-conn="default" title="Internal Database" aria-label="Internal (SQLite)">Internal (SQLite)</a></li>
           </ul>
         </div>
       </div>
@@ -139,7 +139,7 @@
     </nav>
     <output id="fallbackBanner" class="fallback-banner" aria-live="polite" aria-label="Browser fallback mode notice">
       Running in browser fallback mode. Continue using this local URL:
-      <a id="fallbackUrl" class="fallback-url" href="about:blank" target="_blank" rel="noopener">local URL</a>
+      <a id="fallbackUrl" class="fallback-url" href="about:blank" target="_blank" rel="noopener" title="Open fallback local URL" aria-label="Open fallback local URL">local URL</a>
       <button id="copyFallbackUrl" type="button" class="fallback-copy" title="Copy fallback URL" aria-label="Copy fallback URL">Copy</button>
     </output>
     <div id="serverDownOverlay" class="server-down-overlay" role="alertdialog" aria-live="assertive" aria-label="Server is down notice">
@@ -148,7 +148,7 @@
         <p class="server-down-text">This browser window is connected to the desktop app server. Restart the app to continue.</p>
         <p id="serverDownUrl" class="server-down-url">URL: local</p>
         <div class="d-flex gap-2 mt-3">
-          <button id="retryServerConnection" class="btn btn-primary btn-sm" type="button">Retry Connection</button>
+          <button id="retryServerConnection" class="btn btn-primary btn-sm" type="button" title="Retry server connection" aria-label="Retry Connection">Retry Connection</button>
         </div>
       </section>
     </div>
@@ -163,9 +163,9 @@
     <h1 class="visually-hidden">Pythia JS SQL Console</h1>
       <section class="workspace-panel p-3 p-md-4">
         <div class="workspace-tabs" role="tablist" aria-label="Workspace sections">
-          <button id="workspaceTabQuery" type="button" class="btn btn-outline-secondary workspace-tab-btn active" data-workspace-tab="query" role="tab" aria-controls="workspacePaneQuery" aria-selected="true" tabindex="0">Query</button>
-          <button id="workspaceTabAI" type="button" class="btn btn-outline-secondary workspace-tab-btn" data-workspace-tab="ai" role="tab" aria-controls="workspacePaneAI" aria-selected="false" tabindex="-1">AI</button>
-          <button id="workspaceTabLogs" type="button" class="btn btn-outline-secondary workspace-tab-btn" data-workspace-tab="logs" role="tab" aria-controls="workspacePaneLogs" aria-selected="false" tabindex="0">Logs</button>
+          <button id="workspaceTabQuery" type="button" class="btn btn-outline-secondary workspace-tab-btn active" data-workspace-tab="query" role="tab" aria-controls="workspacePaneQuery" aria-selected="true" tabindex="0" title="Open query workspace" aria-label="Open query workspace tab">Query</button>
+          <button id="workspaceTabAI" type="button" class="btn btn-outline-secondary workspace-tab-btn" data-workspace-tab="ai" role="tab" aria-controls="workspacePaneAI" aria-selected="false" tabindex="-1" title="Open AI workspace" aria-label="Open AI workspace tab">AI</button>
+          <button id="workspaceTabLogs" type="button" class="btn btn-outline-secondary workspace-tab-btn" data-workspace-tab="logs" role="tab" aria-controls="workspacePaneLogs" aria-selected="false" tabindex="0" title="Open logs workspace" aria-label="Open logs workspace tab">Logs</button>
         </div>
 
         <section id="workspacePaneQuery" data-workspace-pane="query" class="workspace-pane active" role="tabpanel" aria-labelledby="workspaceTabQuery">
@@ -176,7 +176,7 @@
           <div class="query-label-row mb-1">
             <label for="q" class="form-label mb-0">Enter Query:</label>
             <div class="form-check form-switch" title="Toggle automatic autocomplete suggestions" aria-label="Toggle automatic autocomplete suggestions">
-              <input class="form-check-input" type="checkbox" id="autocompleteToggle" checked>
+              <input class="form-check-input" type="checkbox" id="autocompleteToggle" checked title="Toggle SQL autocomplete" aria-label="Toggle SQL autocomplete">
               <label class="form-check-label" for="autocompleteToggle">Autocomplete</label>
             </div>
           </div>
@@ -238,7 +238,7 @@
                 <h2 class="h5 workspace-title mb-1">AI Workspace</h2>
                 <p class="text-muted mb-0">Describe what you want in plain English. AI will use the current connection schema, ask a clarifying question when needed, then place and run the SQL it selects.</p>
               </div>
-              <output id="aiStatusBadge" class="ai-status alert alert-secondary" aria-live="polite">Checking Ollama status...</output>
+              <output id="aiStatusBadge" class="ai-status alert alert-secondary" title="AI/Ollama connection status and selected model" aria-label="AI status" aria-live="polite" aria-atomic="true">Checking Ollama status...</output>
             </div>
 
             <output id="aiProgress" class="ai-progress" aria-live="polite" aria-atomic="true">
@@ -249,14 +249,14 @@
             <div id="aiConversation" class="ai-conversation" aria-live="polite" aria-label="AI conversation"></div>
 
             <div class="ai-compose">
-              <label for="aiPrompt" class="form-label mb-0">Ask AI:</label>
-              <textarea id="aiPrompt" class="form-control ai-prompt" placeholder="Example: Show the 10 newest customer orders with customer names and totals." aria-describedby="aiMetaText aiLiveStatus"></textarea>
+              <label for="aiPrompt" class="form-label mb-0">Ask The Oracle:</label>
+              <textarea id="aiPrompt" class="form-control ai-prompt" placeholder="Example: Show the 10 newest customer orders with customer names and totals." title="AI request input" aria-label="AI request input" aria-describedby="aiMetaText aiLiveStatus"></textarea>
               <div class="ai-actions">
                 <div class="d-flex gap-2 flex-wrap">
-                  <button id="aiSend" type="button" class="btn btn-primary">Ask AI</button>
-                  <button id="aiClearConversation" type="button" class="btn btn-outline-secondary">Clear</button>
+                  <button id="aiSend" type="button" class="btn btn-primary" title="Send AI request" aria-label="Ask The Oracle">Ask The Oracle</button>
+                  <button id="aiClearConversation" type="button" class="btn btn-outline-secondary" title="Clear AI conversation" aria-label="Clear AI conversation">Clear</button>
                 </div>
-                <div id="aiMetaText" class="ai-meta">Current model: <span id="aiModelLabel">Not selected</span></div>
+                <output id="aiMetaText" class="ai-meta" title="Current selected AI model" aria-label="Current AI model" aria-live="polite" aria-atomic="true">Current model: <span id="aiModelLabel" title="Selected AI model name">Not selected</span></output>
               </div>
               <div id="aiLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
             </div>
@@ -271,11 +271,11 @@
             </div>
             <div class="logs-toolbar-actions">
               <div class="logs-preset-group">
-                <select id="logsTimelinePreset" class="form-select form-select-sm" aria-label="Logs timeline preset"></select>
-                <button id="applyLogsTimelinePreset" class="btn btn-outline-dark btn-sm" type="button">Apply Timeline</button>
+                <select id="logsTimelinePreset" class="form-select form-select-sm" title="Choose logs timeline preset" aria-label="Logs timeline preset"></select>
+                <button id="applyLogsTimelinePreset" class="btn btn-outline-dark btn-sm" type="button" title="Apply selected logs timeline" aria-label="Apply Timeline">Apply Timeline</button>
               </div>
-              <button id="refreshLogsTab" class="btn btn-outline-secondary" type="button">Refresh</button>
-              <button id="runLogArchiveNow" class="btn btn-outline-primary" type="button">Run Archive Check</button>
+              <button id="refreshLogsTab" class="btn btn-outline-secondary" type="button" title="Refresh logs data" aria-label="Refresh logs data">Refresh</button>
+              <button id="runLogArchiveNow" class="btn btn-outline-primary" type="button" title="Run log archive check now" aria-label="Run Archive Check">Run Archive Check</button>
             </div>
           </div>
 
@@ -298,12 +298,12 @@
       </section>
     </main>
 
-    <footer class="app-footer" aria-label="Application version">
-      <span id="appVersion"></span>
+    <footer class="app-footer" aria-label="Application version" title="Application version">
+      <output id="appVersion" title="Application version value" aria-live="polite" aria-atomic="true"></output>
     </footer>
     <output id="runtimeBanner" class="app-footer app-footer-left runtime-banner" aria-live="polite" aria-label="Local URL notice">
       <span>Local:</span>
-      <a id="runtimeUrl" class="runtime-url" href="about:blank" target="_blank" rel="noopener">local URL</a>
+      <a id="runtimeUrl" class="runtime-url" href="about:blank" target="_blank" rel="noopener" title="Open runtime local URL" aria-label="Open runtime local URL">local URL</a>
     </output>
 
   <!-- Load modular JavaScript -->
