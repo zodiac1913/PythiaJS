@@ -1,9 +1,16 @@
 {
   "tokenToTables": {
+    "344": [
+      "HR.HR_Employee"
+    ],
+    "2210": [
+      "HR.HR_Employee"
+    ],
     "can": [
       "sqlite_sequence"
     ],
     "you": [
+      "HR.HR_Employee",
       "sqlite_sequence"
     ],
     "files": [
@@ -40,6 +47,7 @@
       "sqlite_sequence"
     ],
     "asked": [
+      "HR.HR_Employee",
       "sqlite_sequence"
     ],
     "memories": [
@@ -149,8 +157,8 @@
       "HR.HR_Employee"
     ],
     "employeesare": [
-      "HR.HR_EmployeeHistory",
-      "HR.HR_Employee"
+      "HR.HR_Employee",
+      "HR.HR_EmployeeHistory"
     ],
     "arein": [
       "HR.HR_Employee"
@@ -234,8 +242,8 @@
       "HR.HR_Component"
     ],
     "theemployees": [
-      "HR.HR_Component",
-      "HR.HR_Employee"
+      "HR.HR_Employee",
+      "HR.HR_Component"
     ],
     "employeesof": [
       "HR.HR_Employee",
@@ -271,8 +279,8 @@
       "HR.HR_Employee"
     ],
     "employeesin": [
-      "HR.HR_Component",
-      "HR.HR_Employee"
+      "HR.HR_Employee",
+      "HR.HR_Component"
     ],
     "thedivision": [
       "HR.HR_Component",
@@ -373,13 +381,299 @@
     ],
     "aremanagers": [
       "HR.HR_Employee"
+    ],
+    "active": [
+      "HR.HR_Employee"
+    ],
+    "manyactive": [
+      "HR.HR_Employee"
+    ],
+    "activeemployees": [
+      "HR.HR_Employee"
+    ],
+    "activemanagers": [
+      "HR.HR_Employee"
+    ],
+    "indasm": [
+      "HR.HR_Employee"
+    ],
+    "oit": [
+      "HR.HR_Employee"
+    ],
+    "inoit": [
+      "HR.HR_Employee"
+    ],
+    "iusg": [
+      "HR.HR_Employee"
+    ],
+    "ofiusg": [
+      "HR.HR_Employee"
+    ],
+    "ofoit": [
+      "HR.HR_Employee"
+    ],
+    "themanagers": [
+      "HR.HR_Employee"
+    ],
+    "managersof": [
+      "HR.HR_Employee"
+    ],
+    "showme": [
+      "HR.HR_Employee"
+    ],
+    "methe": [
+      "HR.HR_Employee"
+    ],
+    "top": [
+      "HR.HR_Employee"
+    ],
+    "thetop": [
+      "HR.HR_Employee"
+    ],
+    "topemployees": [
+      "HR.HR_Employee"
+    ],
+    "for": [
+      "HR.HR_Employee"
+    ],
+    "five": [
+      "HR.HR_Employee"
+    ],
+    "just": [
+      "HR.HR_Employee"
+    ],
+    "people": [
+      "HR.HR_Employee"
+    ],
+    "meaning": [
+      "HR.HR_Employee"
+    ],
+    "will": [
+      "HR.HR_Employee"
+    ],
+    "charge": [
+      "HR.HR_Employee"
+    ],
+    "results": [
+      "HR.HR_Employee"
+    ],
+    "askedfor": [
+      "HR.HR_Employee"
+    ],
+    "forthe": [
+      "HR.HR_Employee"
+    ],
+    "top5": [
+      "HR.HR_Employee"
+    ],
+    "5five": [
+      "HR.HR_Employee"
+    ],
+    "fivejust": [
+      "HR.HR_Employee"
+    ],
+    "justfive": [
+      "HR.HR_Employee"
+    ],
+    "fivetop": [
+      "HR.HR_Employee"
+    ],
+    "toppeople": [
+      "HR.HR_Employee"
+    ],
+    "peoplemeaning": [
+      "HR.HR_Employee"
+    ],
+    "meaningthey": [
+      "HR.HR_Employee"
+    ],
+    "theywill": [
+      "HR.HR_Employee"
+    ],
+    "willbe": [
+      "HR.HR_Employee"
+    ],
+    "bethe": [
+      "HR.HR_Employee"
+    ],
+    "thepeople": [
+      "HR.HR_Employee"
+    ],
+    "peoplein": [
+      "HR.HR_Employee"
+    ],
+    "incharge": [
+      "HR.HR_Employee"
+    ],
+    "chargeof": [
+      "HR.HR_Employee"
+    ],
+    "oitthey": [
+      "HR.HR_Employee"
+    ],
+    "theyshould": [
+      "HR.HR_Employee"
+    ],
+    "shouldbe": [
+      "HR.HR_Employee"
+    ],
+    "bemanagers": [
+      "HR.HR_Employee"
+    ],
+    "managersthere": [
+      "HR.HR_Employee"
+    ],
+    "thereshould": [
+      "HR.HR_Employee"
+    ],
+    "shouldonly": [
+      "HR.HR_Employee"
+    ],
+    "onlybe": [
+      "HR.HR_Employee"
+    ],
+    "beresults": [
+      "HR.HR_Employee"
+    ],
+    "gave": [
+      "HR.HR_Employee"
+    ],
+    "wtf": [
+      "HR.HR_Employee"
+    ],
+    "forpeople": [
+      "HR.HR_Employee"
+    ],
+    "peopleyou": [
+      "HR.HR_Employee"
+    ],
+    "yougave": [
+      "HR.HR_Employee"
+    ],
+    "gaveme": [
+      "HR.HR_Employee"
+    ],
+    "me344": [
+      "HR.HR_Employee"
+    ],
+    "344wtf": [
+      "HR.HR_Employee"
+    ],
+    "thefive": [
+      "HR.HR_Employee"
+    ],
+    "fivepeople": [
+      "HR.HR_Employee"
+    ],
+    "peopleat": [
+      "HR.HR_Employee"
+    ],
+    "atthe": [
+      "HR.HR_Employee"
+    ],
+    "topof": [
+      "HR.HR_Employee"
+    ],
+    "top10": [
+      "HR.HR_Employee"
+    ],
+    "10employees": [
+      "HR.HR_Employee"
+    ],
+    "ofm": [
+      "HR.HR_Employee"
+    ],
+    "ofofm": [
+      "HR.HR_Employee"
+    ],
+    "distribution": [
+      "HR.HR_Employee"
+    ],
+    "commisioned": [
+      "HR.HR_Employee"
+    ],
+    "corps": [
+      "HR.HR_Employee"
+    ],
+    "across": [
+      "HR.HR_Employee"
+    ],
+    "cms": [
+      "HR.HR_Employee"
+    ],
+    "offices": [
+      "HR.HR_Employee"
+    ],
+    "whatis": [
+      "HR.HR_Employee"
+    ],
+    "isthe": [
+      "HR.HR_Employee"
+    ],
+    "thedistribution": [
+      "HR.HR_Employee"
+    ],
+    "distributionof": [
+      "HR.HR_Employee"
+    ],
+    "ofcommisioned": [
+      "HR.HR_Employee"
+    ],
+    "commisionedcorps": [
+      "HR.HR_Employee"
+    ],
+    "corpsemployees": [
+      "HR.HR_Employee"
+    ],
+    "employeesacross": [
+      "HR.HR_Employee"
+    ],
+    "acrosscms": [
+      "HR.HR_Employee"
+    ],
+    "cmsoffices": [
+      "HR.HR_Employee"
+    ],
+    "whos": [
+      "HR.HR_Employee"
+    ],
+    "whosare": [
+      "HR.HR_Employee"
+    ],
+    "thecommisioned": [
+      "HR.HR_Employee"
+    ],
+    "series": [
+      "HR.HR_Employee"
+    ],
+    "ofseries": [
+      "HR.HR_Employee"
+    ],
+    "series2210": [
+      "HR.HR_Employee"
+    ],
+    "2210employees": [
+      "HR.HR_Employee"
     ]
   },
   "tokenToColumns": {
+    "344": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "2210": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym"
+    ],
     "can": [
       "COUNT(name)"
     ],
     "you": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
       "COUNT(name)"
     ],
     "files": [
@@ -416,6 +710,9 @@
       "COUNT(name)"
     ],
     "asked": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
       "COUNT(name)"
     ],
     "memories": [
@@ -511,6 +808,19 @@
       "COUNT(DISTINCT EmployeeIdentifier)"
     ],
     "employees": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "component": [
+      "COUNT(DISTINCT EmployeeIdentifier)"
+    ],
+    "dasm": [
       "COUNT(*)",
       "Email",
       "Moniker",
@@ -520,19 +830,6 @@
       "MiddleName",
       "LastName"
     ],
-    "component": [
-      "COUNT(DISTINCT EmployeeIdentifier)"
-    ],
-    "dasm": [
-      "Email",
-      "Moniker",
-      "EmployeeIdentifier",
-      "FirstLastName",
-      "LastFirstName",
-      "MiddleName",
-      "LastName",
-      "FirstName"
-    ],
     "howmany": [
       "COUNT(*)",
       "Email",
@@ -549,6 +846,7 @@
       "COUNT(DISTINCT EmployeeIdentifier)"
     ],
     "arein": [
+      "COUNT(*)",
       "COUNT(DISTINCT EmployeeIdentifier)"
     ],
     "inthe": [
@@ -610,14 +908,14 @@
       "FirstName"
     ],
     "who": [
-      "Email",
-      "Moniker",
-      "EmployeeIdentifier",
-      "FirstLastName",
-      "LastFirstName",
-      "MiddleName",
-      "LastName",
-      "FirstName"
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
     ],
     "employes": [
       "LocalityAreaDescription",
@@ -630,24 +928,24 @@
       "CareerStartDate"
     ],
     "whoare": [
-      "Email",
-      "Moniker",
-      "EmployeeIdentifier",
-      "FirstLastName",
-      "LastFirstName",
-      "MiddleName",
-      "LastName",
-      "FirstName"
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
     ],
     "arethe": [
       "Email",
       "Moniker",
       "EmployeeIdentifier",
-      "FirstLastName",
-      "LastFirstName",
-      "MiddleName",
-      "LastName",
-      "FirstName"
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle"
     ],
     "theemployes": [
       "LocalityAreaDescription",
@@ -680,24 +978,24 @@
       "FirstName"
     ],
     "theemployees": [
+      "Email",
       "Moniker",
       "EmployeeIdentifier",
       "LocalityAreaDescription",
       "LocalityArea",
       "EmployeeRemoteWorkSelection",
       "ProfessionalClassificationDescription",
-      "ProfessionalClassification",
-      "EuaRegion"
+      "ProfessionalClassification"
     ],
     "employeesof": [
-      "Email",
-      "Moniker",
-      "EmployeeIdentifier",
-      "FirstLastName",
-      "LastFirstName",
-      "MiddleName",
-      "LastName",
-      "FirstName"
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
     ],
     "monikers": [
       "Moniker"
@@ -722,7 +1020,9 @@
       "Moniker"
     ],
     "employeesin": [
-      "Moniker"
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
     ],
     "thedivision": [
       "Moniker"
@@ -808,10 +1108,10 @@
       "EmployeeIdentifier"
     ],
     "managers": [
-      "COUNT(*)",
       "Email",
       "Moniker",
-      "EmployeeIdentifier"
+      "EmployeeIdentifier",
+      "COUNT(*)"
     ],
     "over": [
       "COUNT(*)",
@@ -830,6 +1130,7 @@
       "EmployeeIdentifier"
     ],
     "manymanagers": [
+      "COUNT(*)",
       "Email",
       "Moniker",
       "EmployeeIdentifier"
@@ -877,6 +1178,563 @@
     ],
     "aremanagers": [
       "COUNT(*)"
+    ],
+    "active": [
+      "COUNT(*)"
+    ],
+    "manyactive": [
+      "COUNT(*)"
+    ],
+    "activeemployees": [
+      "COUNT(*)"
+    ],
+    "activemanagers": [
+      "COUNT(*)"
+    ],
+    "indasm": [
+      "COUNT(*)"
+    ],
+    "oit": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "inoit": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier",
+      "COUNT(*)"
+    ],
+    "iusg": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "ofiusg": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "ofoit": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "themanagers": [
+      "COUNT(*)"
+    ],
+    "managersof": [
+      "COUNT(*)"
+    ],
+    "showme": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "methe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "top": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "thetop": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "topemployees": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "for": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "five": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "just": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "people": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "meaning": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "will": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "charge": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "results": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "askedfor": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "forthe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "top5": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "5five": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "fivejust": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "justfive": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "fivetop": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "toppeople": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "peoplemeaning": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "meaningthey": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "theywill": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "willbe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "bethe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thepeople": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "peoplein": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "incharge": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "chargeof": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "oitthey": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "theyshould": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "shouldbe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "bemanagers": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "managersthere": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thereshould": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "shouldonly": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "onlybe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "beresults": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "gave": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "wtf": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "forpeople": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "peopleyou": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "yougave": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "gaveme": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "me344": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "344wtf": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thefive": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "fivepeople": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "peopleat": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "atthe": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "topof": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "top10": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "10employees": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "ofm": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "ofofm": [
+      "COUNT(*)",
+      "Echelon))))",
+      "Echelon)",
+      "ManagerEmail",
+      "ManagerTitle",
+      "ManagerLastFirstName",
+      "ManagerUserIdentifier",
+      "ManagerEmployeeIdentifier"
+    ],
+    "distribution": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "commisioned": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "corps": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "across": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "cms": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "offices": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "whatis": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "isthe": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thedistribution": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "distributionof": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "ofcommisioned": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "commisionedcorps": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "corpsemployees": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "employeesacross": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "acrosscms": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym",
+      "CommissionedCorpsSerialNumber",
+      "Title",
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "cmsoffices": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "whos": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "whosare": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "thecommisioned": [
+      "Email",
+      "Moniker",
+      "EmployeeIdentifier"
+    ],
+    "series": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym"
+    ],
+    "ofseries": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym"
+    ],
+    "series2210": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym"
+    ],
+    "2210employees": [
+      "COUNT(*)",
+      "OfficeName",
+      "OfficeAcronym"
     ]
   }
 }

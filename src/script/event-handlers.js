@@ -368,6 +368,53 @@ function renderRuntimeUrlBanner() {
   banner.style.display = 'block';
 }
 
+function installStandardCopyShortcut() {
+  document.addEventListener('keydown', async (event) => {
+    if (event.defaultPrevented || event.altKey) {
+      return;
+    }
+
+    const isCopyShortcut = event.key.toLowerCase() === 'c' && (event.metaKey || event.ctrlKey);
+    if (!isCopyShortcut) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const selection = globalThis.getSelection?.();
+    const selectedText = selection?.toString() || '';
+
+    if (!selectedText.trim()) {
+      if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
+        return;
+      }
+
+      const start = activeElement.selectionStart ?? 0;
+      const end = activeElement.selectionEnd ?? 0;
+      if (start === end) {
+        return;
+      }
+    }
+
+    if (globalThis.navigator?.clipboard?.writeText && selectedText.trim()) {
+      try {
+        await globalThis.navigator.clipboard.writeText(selectedText);
+        event.preventDefault();
+        return;
+      } catch {
+        // Fall through to execCommand for environments that block clipboard API.
+      }
+    }
+
+    try {
+      if (document.execCommand('copy')) {
+        event.preventDefault();
+      }
+    } catch {
+      // Let the platform continue with its default behavior when available.
+    }
+  });
+}
+
 async function loadHistoryQueriesForConnection(connectionId, force = false, signal = null) {
   if (!force && historyQueryCache[connectionId]) {
     return historyQueryCache[connectionId];
@@ -972,6 +1019,7 @@ document.addEventListener('DOMContentLoaded', function() {
   renderAppVersion();
   renderRuntimeUrlBanner();
   renderFallbackModeBanner();
+  installStandardCopyShortcut();
   startServerHealthMonitor();
   startLogMaintenanceMonitor();
   loadConnections();

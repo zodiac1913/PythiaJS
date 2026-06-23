@@ -37,12 +37,16 @@ if (process.argv.includes("--server")) {
 
 // ── Otherwise, this is the main UI process ──
 
-function canBindPort(port) {
+async function canBindPort(port) {
   return new Promise((resolve) => {
-    const tester = net.createServer();
-    tester.once('error', () => resolve(false));
-    tester.once('listening', () => tester.close(() => resolve(true)));
-    tester.listen(port, '127.0.0.1');
+    const probe = net.createServer();
+
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => {
+      probe.close(() => resolve(true));
+    });
+
+    probe.listen({ port, host: '::', exclusive: true });
   });
 }
 
@@ -114,16 +118,24 @@ function writeStartupErrorReport(err, attemptedUrl) {
   }
 }
 
-async function waitForServer(port, timeoutMs = 15000, intervalMs = 200) {
+async function waitForServer(port, expectedToken, timeoutMs = 15000, intervalMs = 200) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const ready = await new Promise((resolve) => {
-      const sock = net.createConnection({ host: '127.0.0.1', port }, () => {
-        sock.destroy();
-        resolve(true);
+    let ready = false;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
       });
-      sock.on('error', () => resolve(false));
-    });
+      if (response.ok) {
+        const payload = await response.json();
+        ready = payload?.ok === true && payload?.token === expectedToken;
+      }
+    } catch {
+      ready = false;
+    }
+
     if (ready) return;
     await Bun.sleep(intervalMs);
   }
@@ -224,6 +236,7 @@ const selectedPort = await findAvailablePort(preferredPort);
 const appUrl = `http://localhost:${selectedPort}`;
 const appUrlDirect = `http://127.0.0.1:${selectedPort}`;
 const appUrlWebview = `${appUrlDirect}?host=webview`;
+const serverStartupToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 console.log(`Starting PythiaJS at ${appUrl}`);
 
 const serverArgs = isCompiledBinary
@@ -233,7 +246,7 @@ const serverArgs = isCompiledBinary
 const serverProcess = spawn(process.execPath, serverArgs, {
   stdio: "pipe",
   cwd: process.cwd(),
-  env: { ...process.env, PYTHIA_PORT: String(selectedPort) }
+  env: { ...process.env, PYTHIA_PORT: String(selectedPort), PYTHIA_SERVER_TOKEN: serverStartupToken }
 });
 
 // Forward server output to console
@@ -247,8 +260,9 @@ const earlyServerExit = new Promise((_, reject) => {
 });
 
 try {
-  await Promise.race([waitForServer(selectedPort), earlyServerExit]);
+  await Promise.race([waitForServer(selectedPort, serverStartupToken), earlyServerExit]);
 } catch (err) {
+  stopServerProcess(serverProcess);
   console.error('PythiaJS failed to start the local server.');
   if (err?.message) console.error('Startup error:', err.message);
 

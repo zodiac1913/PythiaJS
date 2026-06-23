@@ -1,13 +1,13 @@
 PythiaJS startup failed before the UI could open.
 
-Timestamp: 2026-06-17T09:39:45.253Z
+Timestamp: 2026-06-22T14:59:04.064Z
 Platform: darwin
 Process path: /Users/rxjr/.bun/bin/bun
 Working directory: /Users/rxjr/Desktop/Dev/PythiaJS
 Attempted URL: http://localhost:3737
 
 Error:
-Server exited before startup completed (code=1, signal=null)
+Server did not start within 15000ms
 
 Checklist:
 1) Ensure WebView2 Runtime is installed on Windows:

@@ -62,10 +62,12 @@ const APP_VERSION = resolveAppVersion();
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
 const OLLAMA_STATUS_TIMEOUT_MS = 2500;
 const OLLAMA_CHAT_TIMEOUT_MS = 45000;
+const SERVER_STARTUP_TOKEN = process.env.PYTHIA_SERVER_TOKEN || '';
 //Forbidden Table Scemas for the AI
 const FORBIDDEN_AI_SCHEMAS = new Set(['BUS']);
 const PREFERRED_AI_SCHEMAS = ['HR', 'CORE'];
 const AI_SCHEMA_MEMORY_PATH = assetPath('docs/ai-schema-memory.json');
+const AI_SCHEMA_DOCS_ROOT = assetPath('docs/schema_docs');
 const READ_ONLY_SQL_START = /^\s*(SELECT|WITH|SHOW|DESCRIBE|PRAGMA)\b/i;
 const WRITE_SQL_KEYWORDS = /\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|TRUNCATE|CREATE|REPLACE|GRANT|REVOKE|EXEC(?:UTE)?|CALL)\b/i;
 
@@ -87,6 +89,7 @@ const DEFAULT_AI_SCHEMA_MEMORY = {
 };
 
 let aiSchemaMemory = null;
+let aiSchemaDocsCache = null;
 
 const DEFAULT_PORT = 3737;
 const MAX_PORT_ATTEMPTS = 25;
@@ -97,11 +100,6 @@ function resolvePreferredPort() {
     return fromEnv;
   }
   return DEFAULT_PORT;
-}
-
-function isAddressInUseError(err) {
-  const message = String(err?.message || err || '');
-  return err?.code === 'EADDRINUSE' || message.includes('EADDRINUSE') || message.toLowerCase().includes('port') && message.toLowerCase().includes('in use');
 }
 
 function normalizeRunQueryText(text) {
@@ -418,6 +416,216 @@ function loadAiSchemaMemory() {
   }
 }
 
+function normalizeDatabaseName(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function trimSchemaDocText(value, maxLength = 4000) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function getSchemaDocsDatabaseRoot(databaseName) {
+  const normalized = normalizeDatabaseName(databaseName);
+  if (!normalized) {
+    return null;
+  }
+
+  const directPath = path.join(AI_SCHEMA_DOCS_ROOT, normalized);
+  if (existsSync(directPath) && statSync(directPath).isDirectory()) {
+    return directPath;
+  }
+
+  const manifestPath = path.join(AI_SCHEMA_DOCS_ROOT, 'portable_manifest.json');
+  if (!existsSync(manifestPath)) {
+    return null;
+  }
+
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    return normalizeDatabaseName(manifest?.database) === normalized ? AI_SCHEMA_DOCS_ROOT : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadAiSchemaDocsForDatabase(databaseName) {
+  const normalized = normalizeDatabaseName(databaseName);
+  if (!normalized) {
+    return null;
+  }
+
+  if (!aiSchemaDocsCache) {
+    aiSchemaDocsCache = new Map();
+  }
+
+  if (aiSchemaDocsCache.has(normalized)) {
+    return aiSchemaDocsCache.get(normalized);
+  }
+
+  const rootPath = getSchemaDocsDatabaseRoot(normalized);
+  if (!rootPath) {
+    aiSchemaDocsCache.set(normalized, null);
+    return null;
+  }
+
+  try {
+    const manifestPath = path.join(rootPath, 'portable_manifest.json');
+    const playbookPath = path.join(rootPath, 'query_playbook.md');
+    const result = {
+      database: normalized,
+      rootPath,
+      manifest: existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf-8')) : null,
+      playbook: existsSync(playbookPath) ? trimSchemaDocText(readFileSync(playbookPath, 'utf-8'), 5000) : ''
+    };
+
+    aiSchemaDocsCache.set(normalized, result);
+    return result;
+  } catch {
+    aiSchemaDocsCache.set(normalized, null);
+    return null;
+  }
+}
+
+function getTableDocumentationSnippet(rootPath, docPath) {
+  if (!rootPath || !docPath) {
+    return '';
+  }
+
+  const relativeDocPath = String(docPath).replace(/^schema_docs\//, '');
+  const absoluteDocPath = path.join(rootPath, relativeDocPath);
+  if (!existsSync(absoluteDocPath)) {
+    return '';
+  }
+
+  try {
+    return trimSchemaDocText(readFileSync(absoluteDocPath, 'utf-8'), 2200);
+  } catch {
+    return '';
+  }
+}
+
+function buildSchemaDocsContext({ databaseName, relevantSchema }) {
+  const docs = loadAiSchemaDocsForDatabase(databaseName);
+  if (!docs?.manifest && !docs?.playbook) {
+    return '';
+  }
+
+  const manifest = docs.manifest || {};
+  const tableIndex = new Map(
+    Array.isArray(manifest.tables)
+      ? manifest.tables.map((entry) => [String(entry?.qualifiedName || '').toUpperCase(), entry])
+      : []
+  );
+
+  const retrievalStrategy = Array.isArray(manifest.retrievalStrategy)
+    ? manifest.retrievalStrategy.slice(0, 6).map((entry) => `- ${entry}`).join('\n')
+    : '';
+
+  const relevantTableDocs = (relevantSchema?.relevantTables || [])
+    .map((entry) => tableIndex.get(String(entry?.tableName || '').toUpperCase()))
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((entry) => {
+      const usageNotes = Array.isArray(entry.usageNotes) ? entry.usageNotes.slice(0, 3) : [];
+      const joins = Array.isArray(entry.conventionalJoins) ? entry.conventionalJoins.slice(0, 2) : [];
+      const docSnippet = getTableDocumentationSnippet(docs.rootPath, entry.docPath);
+
+      return [
+        `Table: ${entry.qualifiedName}`,
+        entry.summary ? `Summary: ${entry.summary}` : '',
+        usageNotes.length ? `Usage Notes: ${usageNotes.join(' | ')}` : '',
+        joins.length ? `Conventional Joins: ${joins.join(' | ')}` : '',
+        docSnippet ? `Reference:\n${docSnippet}` : ''
+      ].filter(Boolean).join('\n');
+    });
+
+  return [
+    '========================',
+    `DATABASE DOCUMENTATION (${docs.database})`,
+    '========================',
+    retrievalStrategy ? `Retrieval Strategy:\n${retrievalStrategy}` : '',
+    docs.playbook ? `Query Playbook:\n${docs.playbook}` : '',
+    relevantTableDocs.length ? `Relevant Table Docs:\n\n${relevantTableDocs.join('\n\n')}` : ''
+  ].filter(Boolean).join('\n\n');
+}
+
+function buildOrganizationAliasContext(databaseName) {
+  if (normalizeDatabaseName(databaseName) !== 'CATSDEV') {
+    return '';
+  }
+
+  return [
+    'ORGANIZATION ALIASES',
+    'In CATSDEV, CMS and Medicare can refer to the organization as a whole.',
+    'CMS is an agency under HHS.',
+    'Do not assume a bare mention of CMS or Medicare means a narrower Division, Group, Office, or ComponentAcronym filter.',
+    'If the user is asking for an organization-wide employee category, do not invent a CMS component filter unless the user explicitly asks for CMS-scoped component membership.'
+  ].join('\n');
+}
+
+const ECHELON_SNAPSHOT_LIMIT = 80;
+
+async function buildEmployeeEchelonContext({ connectionId, connectionType, databaseName, schema, conversation }) {
+  if (normalizeDatabaseName(databaseName) !== 'CATSDEV') {
+    return '';
+  }
+
+  const userText = getUserIntentText(conversation).toLowerCase();
+  const shouldIncludeEchelon = userRequestedEmployeesByComponent(conversation)
+    || userRequestedManagerCount(conversation)
+    || /\b(component|acronym|echelon|division|group|office|center|manager|employee|staff|people)\b/.test(userText);
+  if (!shouldIncludeEchelon) {
+    return '';
+  }
+
+  const employeeTable = findSchemaTableNameByBaseName(schema, 'HR_Employee');
+  if (!employeeTable) {
+    return '';
+  }
+
+  const employeeColumns = schema[employeeTable] || [];
+  const echelonCol = findColumnName(employeeColumns, 'Echelon');
+  if (!echelonCol) {
+    return '';
+  }
+
+  const distinctSql = connectionType === 'mssql'
+    ? `SELECT DISTINCT TOP (${ECHELON_SNAPSHOT_LIMIT}) ${echelonCol} AS Echelon FROM ${employeeTable} WHERE ${echelonCol} IS NOT NULL AND LEN(LTRIM(RTRIM(${echelonCol}))) > 0 ORDER BY ${echelonCol}`
+    : `SELECT DISTINCT ${echelonCol} AS Echelon FROM ${employeeTable} WHERE ${echelonCol} IS NOT NULL AND LENGTH(TRIM(${echelonCol})) > 0 ORDER BY ${echelonCol} LIMIT ${ECHELON_SNAPSHOT_LIMIT}`;
+
+  try {
+    const rows = await executeQuery(connectionId, distinctSql);
+    const echelons = (rows || [])
+      .map((row) => String(row?.Echelon || row?.echelon || '').trim())
+      .filter(Boolean)
+      .slice(0, ECHELON_SNAPSHOT_LIMIT);
+
+    if (!echelons.length) {
+      return '';
+    }
+
+    return [
+      'ECHELON HIERARCHY SNAPSHOT',
+      `Distinct values from ${employeeTable}.${echelonCol}:`,
+      ...echelons.map((value) => `- ${value}`),
+      'Treat each Echelon value as a hierarchy path example that shows related component acronyms in one chain.',
+      'Example: if an Echelon looks like /OIT/IUSG/DASM, use that as evidence that OIT, IUSG, and DASM belong to the same hierarchy path.',
+      'Use this snapshot to understand higher-level and lower-level component relationships before asking the user to clarify level names.'
+    ].join('\n');
+  } catch {
+    return '';
+  }
+}
+
 function persistAiSchemaMemory() {
   const memory = loadAiSchemaMemory();
   mkdirSync(path.dirname(AI_SCHEMA_MEMORY_PATH), { recursive: true });
@@ -698,6 +906,10 @@ function userRequestedEmployeesByComponent(conversation) {
     return false;
   }
 
+  if (userRequestedCommissionedCorpsEmployees(conversation)) {
+    return false;
+  }
+
   const employeeSignals = ['employee', 'employees', 'staff', 'worker', 'workers', 'people'];
   const componentSignals = [
     'component',
@@ -724,7 +936,365 @@ function userRequestedEmployeesByComponent(conversation) {
   // Acronym-based employee asks (for example: "employees of DASM") should still
   // be treated as component membership intent even without explicit level keywords.
   const acronymCandidates = getConversationAcronymCandidates(conversation);
-  return asksForEmployees && acronymCandidates.length > 0;
+  const nonOrgAcronyms = acronymCandidates.filter((token) => !isWholeOrganizationAlias(token));
+  return asksForEmployees && nonOrgAcronyms.length > 0;
+}
+
+function userRequestedCommissionedCorpsEmployees(conversation) {
+  const userText = getUserIntentText(conversation).toLowerCase();
+  if (!userText) {
+    return false;
+  }
+
+  const employeeSignals = ['employee', 'employees', 'officer', 'officers', 'staff', 'people'];
+  const commissionedSignals = ['commissioned corps', 'commissionedcorps', 'corps employee', 'corps employees', 'corps officer', 'corps officers'];
+
+  return commissionedSignals.some((signal) => userText.includes(signal))
+    && employeeSignals.some((signal) => userText.includes(signal));
+}
+
+function userRequestedOfficeDistribution(conversation) {
+  const userText = getUserIntentText(conversation).toLowerCase();
+  if (!userText) {
+    return false;
+  }
+
+  const distributionSignals = ['distribution', 'across', 'breakdown', 'grouped by', 'by office', 'across offices', 'office distribution', 'per office'];
+  const officeSignals = ['office', 'offices'];
+  const organizationSignals = ['cms', 'medicare'];
+  return distributionSignals.some((signal) => userText.includes(signal))
+    && (officeSignals.some((signal) => userText.includes(signal))
+      || organizationSignals.some((signal) => userText.includes(signal)));
+}
+
+const EMPLOYEE_ATTRIBUTE_DISTRIBUTION_SPECS = [
+  {
+    kind: 'jobSeries',
+    aliases: ['series', 'job series'],
+    columnCandidates: ['JobSeries'],
+    valuePattern: /\b(?:job\s+)?series\s+([a-z0-9-]{2,20})\b/i,
+    normalizeValue: (value) => value.toUpperCase(),
+    formatLabel: (value) => `Series ${value}`,
+    buildPredicate(columnName, value) {
+      return `e.${columnName} = '${escapeSqlStringLiteral(value)}'`;
+    },
+    buildExplanation(tableName, columnName, label) {
+      return `${tableName}.${columnName} identifies ${label} employees.`;
+    }
+  },
+  {
+    kind: 'payPlan',
+    aliases: ['pay plan', 'plan'],
+    columnCandidates: ['PayPlan'],
+    valuePattern: /\b(?:pay\s+plan|plan)\s+([a-z0-9-]{1,20})\b/i,
+    normalizeValue: (value) => value.toUpperCase(),
+    formatLabel: (value) => value.toUpperCase(),
+    buildPredicate(columnName, value) {
+      return `e.${columnName} = '${escapeSqlStringLiteral(value)}'`;
+    },
+    buildExplanation(tableName, columnName, label) {
+      return `${tableName}.${columnName} identifies ${label} employees.`;
+    }
+  },
+  {
+    kind: 'sex',
+    aliases: ['sex', 'gender'],
+    columnCandidates: ['Sex', 'SexDescription'],
+    valueMatchers: [
+      {
+        pattern: /\bfemale\b|\bwomen\b/i,
+        value: 'F',
+        displayValue: 'Female'
+      },
+      {
+        pattern: /\bmale\b|\bmen\b/i,
+        value: 'M',
+        displayValue: 'Male'
+      }
+    ],
+    buildPredicate(columnNames, value, displayValue) {
+      const filters = [];
+      if (columnNames.Sex) {
+        filters.push(`e.${columnNames.Sex} = '${escapeSqlStringLiteral(value)}'`);
+      }
+      if (columnNames.SexDescription) {
+        filters.push(`e.${columnNames.SexDescription} = '${escapeSqlStringLiteral(displayValue)}'`);
+      }
+      return filters.length > 1 ? `(${filters.join(' OR ')})` : filters[0];
+    },
+    buildExplanation(tableName, columnNames, label) {
+      return `${tableName}.${columnNames.Sex || columnNames.SexDescription} identifies ${label} employees.`;
+    }
+  }
+];
+
+const EMPLOYEE_DISTRIBUTION_ENTITY_SIGNALS = ['employee', 'employees', 'staff', 'worker', 'workers', 'people', 'officer', 'officers', 'manager', 'managers'];
+const EMPLOYEE_DISTRIBUTION_COLUMN_NOISE = new Set(['employee', 'employees', 'description', 'desc', 'identifier', 'identifiers', 'id']);
+const EMPLOYEE_DISTRIBUTION_DESCRIPTOR_NOISE = new Set(['active', 'current', 'all', 'any', 'the']);
+
+function buildEmployeeDistributionRequest(spec, value, label, displayValue) {
+  return {
+    kind: spec.kind,
+    spec,
+    value,
+    displayValue,
+    label
+  };
+}
+
+function buildGenericEmployeeDistributionRequest(columnName, rawAttribute, rawValue) {
+  const normalizedValue = /^\d+(?:\.\d+)?$/.test(rawValue) ? rawValue : rawValue.toUpperCase();
+  return {
+    kind: 'employeeColumn',
+    spec: {
+      kind: 'employeeColumn',
+      buildPredicate(resolvedColumnName, value) {
+        if (/^\d+(?:\.\d+)?$/.test(value)) {
+          return `e.${resolvedColumnName} = ${value}`;
+        }
+        return `UPPER(CAST(e.${resolvedColumnName} AS NVARCHAR(4000))) = '${escapeSqlStringLiteral(String(value).toUpperCase())}'`;
+      },
+      buildExplanation(tableName, resolvedColumnName, label) {
+        return `${tableName}.${resolvedColumnName} identifies ${label} employees.`;
+      }
+    },
+    value: normalizedValue,
+    label: `${rawAttribute.trim()} ${rawValue.trim()}`.trim(),
+    resolvedColumnName: columnName
+  };
+}
+
+function normalizeEmployeeDistributionColumnParts(columnName) {
+  return splitIdentifierParts(columnName)
+    .filter((part) => !EMPLOYEE_DISTRIBUTION_COLUMN_NOISE.has(part));
+}
+
+function scoreEmployeeDistributionColumnMatch(columnName, attributeParts) {
+  const columnParts = normalizeEmployeeDistributionColumnParts(columnName);
+  if (!columnParts.length || !attributeParts.length) {
+    return 0;
+  }
+
+  const normalizedColumn = normalizeSearchToken(columnParts.join(' '));
+  const normalizedAttribute = normalizeSearchToken(attributeParts.join(' '));
+  if (!normalizedColumn || !normalizedAttribute) {
+    return 0;
+  }
+
+  let score = 0;
+  if (normalizedColumn === normalizedAttribute) {
+    score += 100;
+  }
+  if (normalizedColumn.endsWith(normalizedAttribute) || normalizedAttribute.endsWith(normalizedColumn)) {
+    score += 40;
+  }
+
+  for (const attributePart of attributeParts) {
+    if (columnParts.includes(attributePart)) {
+      score += 20;
+      continue;
+    }
+
+    if (columnParts.some((columnPart) => columnPart.startsWith(attributePart) || attributePart.startsWith(columnPart))) {
+      score += 8;
+    }
+  }
+
+  return score;
+}
+
+function findBestEmployeeDistributionColumn(employeeColumns, attributeText) {
+  const attributeParts = splitIdentifierParts(attributeText)
+    .filter((part) => !EMPLOYEE_DISTRIBUTION_DESCRIPTOR_NOISE.has(part));
+  if (!attributeParts.length) {
+    return null;
+  }
+
+  let bestColumn = null;
+  let bestScore = 0;
+  for (const columnName of employeeColumns || []) {
+    const score = scoreEmployeeDistributionColumnMatch(columnName, attributeParts);
+    if (score > bestScore) {
+      bestColumn = columnName;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 20 ? bestColumn : null;
+}
+
+function extractEmployeeDistributionDescriptor(userText) {
+  const patterns = [
+    /\b(?:distribution|breakdown)\s+of\s+(.+?)\s+(?:across|by|grouped by|per)\b/i,
+    /\b(.+?)\s+distribution\s+(?:across|by|grouped by|per)\b/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(userText);
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const descriptor = match[1]
+      .replace(/\b(?:employees?|staff|workers?|people|officers?|managers?)\b/ig, '')
+      .replace(/^\s*(?:the|all|any|of)\b/ig, '')
+      .trim();
+    if (descriptor) {
+      return descriptor;
+    }
+  }
+
+  return null;
+}
+
+function findGenericEmployeeAttributeDistributionRequest(userText, employeeColumns) {
+  const descriptor = extractEmployeeDistributionDescriptor(userText);
+  if (!descriptor) {
+    return null;
+  }
+
+  const descriptorParts = splitIdentifierParts(descriptor)
+    .filter((part) => !EMPLOYEE_DISTRIBUTION_DESCRIPTOR_NOISE.has(part));
+  for (let attributeLength = descriptorParts.length - 1; attributeLength >= 1; attributeLength--) {
+    const attributeText = descriptorParts.slice(0, attributeLength).join(' ');
+    const valueText = descriptorParts.slice(attributeLength).join(' ').trim();
+    if (!attributeText || !valueText) {
+      continue;
+    }
+
+    const columnName = findBestEmployeeDistributionColumn(employeeColumns, attributeText);
+    if (columnName) {
+      return buildGenericEmployeeDistributionRequest(columnName, attributeText, valueText);
+    }
+  }
+
+  return null;
+}
+
+function findEmployeeAttributeDistributionRequest(userText) {
+  for (const spec of EMPLOYEE_ATTRIBUTE_DISTRIBUTION_SPECS) {
+    if (spec.valuePattern) {
+      const match = spec.valuePattern.exec(userText);
+      if (match) {
+        const normalizedValue = spec.normalizeValue ? spec.normalizeValue(match[1]) : match[1];
+        const label = spec.formatLabel ? spec.formatLabel(normalizedValue) : normalizedValue;
+        return buildEmployeeDistributionRequest(spec, normalizedValue, label);
+      }
+    }
+
+    if (!spec.valueMatchers) {
+      continue;
+    }
+
+    for (const matcher of spec.valueMatchers) {
+      if (matcher.pattern.test(userText)) {
+        return buildEmployeeDistributionRequest(
+          spec,
+          matcher.value,
+          matcher.displayValue || matcher.value,
+          matcher.displayValue || matcher.value
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
+function findFallbackEmployeeAttributeDistributionRequest(userText) {
+  if (!/\bgs\b/i.test(userText) && !/general schedule/i.test(userText)) {
+    return null;
+  }
+
+  const payPlanSpec = EMPLOYEE_ATTRIBUTE_DISTRIBUTION_SPECS.find((spec) => spec.kind === 'payPlan');
+  return payPlanSpec ? buildEmployeeDistributionRequest(payPlanSpec, 'GS', 'GS') : null;
+}
+
+function userRequestedEmployeeScopedDistribution(conversation, distributionRequest) {
+  if (!distributionRequest) {
+    return false;
+  }
+
+  const userText = getUserIntentText(conversation).toLowerCase();
+  if (!userText) {
+    return false;
+  }
+
+  if (EMPLOYEE_DISTRIBUTION_ENTITY_SIGNALS.some((signal) => userText.includes(signal))) {
+    return true;
+  }
+
+  return distributionRequest.kind === 'employeeColumn'
+    || distributionRequest.kind === 'jobSeries'
+    || distributionRequest.kind === 'payPlan'
+    || distributionRequest.kind === 'sex';
+}
+
+function resolveEmployeeDistributionColumns(employeeColumns, distributionSpec) {
+  const resolvedColumns = {};
+  for (const columnCandidate of distributionSpec.columnCandidates || []) {
+    const resolvedColumnName = findColumnName(employeeColumns, columnCandidate);
+    if (resolvedColumnName) {
+      resolvedColumns[columnCandidate] = resolvedColumnName;
+    }
+  }
+  return resolvedColumns;
+}
+
+function buildEmployeeDistributionAttributeDetails({ distributionRequest, distributionSpec, employeeColumns, employeeTable }) {
+  if (distributionRequest.resolvedColumnName) {
+    const attributePredicate = distributionSpec.buildPredicate(distributionRequest.resolvedColumnName, distributionRequest.value);
+    if (!attributePredicate) {
+      return null;
+    }
+
+    return {
+      attributePredicate,
+      attributeExplanation: distributionSpec.buildExplanation(employeeTable, distributionRequest.resolvedColumnName, distributionRequest.label)
+    };
+  }
+
+  const resolvedColumns = resolveEmployeeDistributionColumns(employeeColumns, distributionSpec);
+  if (!Object.keys(resolvedColumns).length) {
+    return null;
+  }
+
+  const primaryResolvedColumn = resolvedColumns[distributionSpec.columnCandidates?.[0]];
+  const resolvedColumnTarget = primaryResolvedColumn || resolvedColumns;
+  const displayValue = distributionRequest.displayValue || distributionRequest.label;
+  const attributePredicate = distributionSpec.buildPredicate(
+    resolvedColumnTarget,
+    distributionRequest.value,
+    displayValue
+  );
+
+  if (!attributePredicate) {
+    return null;
+  }
+
+  return {
+    attributePredicate,
+    attributeExplanation: distributionSpec.buildExplanation(employeeTable, resolvedColumnTarget, distributionRequest.label)
+  };
+}
+
+function extractEmployeeAttributeDistributionRequest(conversation, employeeColumns) {
+  if (!userRequestedOfficeDistribution(conversation)) {
+    return null;
+  }
+
+  const userText = getUserIntentText(conversation);
+  if (!userText) {
+    return null;
+  }
+
+  const distributionRequest = findGenericEmployeeAttributeDistributionRequest(userText, employeeColumns)
+    || findEmployeeAttributeDistributionRequest(userText)
+    || findFallbackEmployeeAttributeDistributionRequest(userText);
+
+  return userRequestedEmployeeScopedDistribution(conversation, distributionRequest)
+    ? distributionRequest
+    : null;
 }
 
 function userNeedsComponentLevelResolution(conversation) {
@@ -1049,9 +1619,67 @@ function extractAcronymCandidates(text) {
 }
 
 function getConversationAcronymCandidates(conversation) {
-  const text = getUserIntentText(conversation);
   const blocked = new Set(['SELECT', 'FROM', 'WHERE', 'WITH', 'AND', 'OR', 'NULL', 'SQL', 'HR', 'MSSQL']);
+  const latestText = getLatestUserMessage(conversation);
+  const latestAcronyms = extractAcronymCandidates(latestText).filter((token) => !blocked.has(token));
+  if (latestAcronyms.length) {
+    return latestAcronyms;
+  }
+
+  const text = getUserIntentText(conversation);
   return extractAcronymCandidates(text).filter((token) => !blocked.has(token));
+}
+
+function isWholeOrganizationAlias(token) {
+  const normalized = String(token || '').trim().toUpperCase();
+  return normalized === 'CMS' || normalized === 'MEDICARE';
+}
+
+function extractRequestedRowLimit(conversation) {
+  const latest = getLatestUserMessage(conversation).toLowerCase();
+  if (!latest) {
+    return 0;
+  }
+
+  const wordToNumber = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  };
+
+  const digitPattern = /\b(?:top|first)\s+(\d{1,3})\b|\b(\d{1,3})\s+(?:people|employees|managers|staff|workers)\b/i;
+  const digitMatch = digitPattern.exec(latest);
+  if (digitMatch) {
+    return Number(digitMatch[1] || digitMatch[2] || 0);
+  }
+
+  const numberWords = Object.keys(wordToNumber).join('|');
+  const wordPattern = new RegExp(String.raw`\b(?:top|first)\s+(${numberWords})\b|\b(${numberWords})\s+(?:people|employees|managers|staff|workers)\b`, 'i');
+  const wordMatch = wordPattern.exec(latest);
+  if (wordMatch) {
+    return wordToNumber[String(wordMatch[1] || wordMatch[2] || '').toLowerCase()] || 0;
+  }
+
+  return 0;
+}
+
+function userRequestedTopLeaders(conversation) {
+  const text = getLatestUserMessage(conversation).toLowerCase();
+  if (!text) {
+    return false;
+  }
+
+  return /\btop\b/.test(text)
+    || /\bpeople\s+at\s+the\s+top\b/.test(text)
+    || /\bat\s+the\s+top\s+of\b/.test(text)
+    || /\bin\s+charge\b/.test(text);
 }
 
 function sqlContainsAnyAcronymLiteral(sql, acronyms) {
@@ -1126,7 +1754,7 @@ function userRequestedActiveEmployees(conversation) {
     'non deactivated',
     'non-deactivated'
   ];
-  const employeeSignals = ['employee', 'employees', 'staff', 'worker', 'workers', 'people'];
+  const employeeSignals = ['employee', 'employees', 'staff', 'worker', 'workers', 'people', 'manager', 'managers'];
   return activeSignals.some((signal) => userText.includes(signal))
     && employeeSignals.some((signal) => userText.includes(signal));
 }
@@ -1305,6 +1933,21 @@ function userRequestedManagerAge(conversation) {
   return managerSignals.some((signal) => userText.includes(signal)) && userRequestedEmployeeAge(conversation);
 }
 
+function userRequestedManagerCount(conversation) {
+  const userText = getUserIntentText(conversation).toLowerCase();
+  if (!userText || userRequestedManagerAge(conversation)) {
+    return false;
+  }
+
+  const managerSignals = ['manager', 'managers'];
+  const countSignals = ['how many', 'count', 'number of', 'total'];
+  const employeeSignals = ['employee', 'employees', 'staff', 'worker', 'workers', 'people', 'manager', 'managers'];
+
+  return managerSignals.some((signal) => userText.includes(signal))
+    && countSignals.some((signal) => userText.includes(signal))
+    && employeeSignals.some((signal) => userText.includes(signal));
+}
+
 function extractAgeThreshold(conversation) {
   const userText = getUserIntentText(conversation);
   const comparative = /\b(?:over|under|older\s+than|younger\s+than)\s+(\d{1,3})\b/i.exec(userText);
@@ -1419,6 +2062,289 @@ async function buildDeterministicManagerAgeDecision({ connectionType, schema, co
   };
 }
 
+async function buildDeterministicCommissionedCorpsDecision({ schema, conversation }) {
+  if (!userRequestedCommissionedCorpsEmployees(conversation)) {
+    return null;
+  }
+
+  const employeeTable = findSchemaTableNameByBaseName(schema, 'HR_Employee');
+  if (!employeeTable) {
+    return null;
+  }
+
+  const employeeColumns = schema[employeeTable] || [];
+  const commissionedCol = findColumnName(employeeColumns, 'CommissionedCorpsSerialNumber');
+  if (!commissionedCol) {
+    return null;
+  }
+
+  const officeAcronymCol = findColumnName(employeeColumns, 'OfficeAcronym');
+  const officeNameCol = findColumnName(employeeColumns, 'OfficeName');
+  const employeeIdentifierCol = findColumnName(employeeColumns, 'EmployeeIdentifier');
+  const monikerCol = findColumnName(employeeColumns, 'Moniker');
+  const emailCol = findColumnName(employeeColumns, 'Email');
+  const titleCol = findColumnName(employeeColumns, 'Title');
+  const separationDateCol = findColumnName(employeeColumns, 'SeparationDate') || findColumnName(employeeColumns, 'SeparatedDate');
+  const deactivateTimestampCol = findColumnName(employeeColumns, 'DeactivateTimestamp')
+    || findColumnName(employeeColumns, 'DeactivatedTimestamp')
+    || findColumnName(employeeColumns, 'DeactivateDate');
+
+  const isDistribution = userRequestedOfficeDistribution(conversation);
+  const activeChecks = [];
+  if (userRequestedActiveEmployees(conversation)) {
+    if (separationDateCol) {
+      activeChecks.push(`e.${separationDateCol} IS NULL`);
+    }
+    if (deactivateTimestampCol) {
+      activeChecks.push(`e.${deactivateTimestampCol} IS NULL`);
+    }
+  }
+
+  const baseFilters = [
+    `e.${commissionedCol} IS NOT NULL`,
+    `NULLIF(LTRIM(RTRIM(CONVERT(varchar(255), e.${commissionedCol}))), '') IS NOT NULL`
+  ];
+  if (activeChecks.length) {
+    baseFilters.push(activeChecks.join(' AND '));
+  }
+
+  if (isDistribution && (officeAcronymCol || officeNameCol)) {
+    const groupColumns = [];
+    const selectColumns = [];
+    const orderColumns = [];
+
+    if (officeAcronymCol) {
+      selectColumns.push(`e.${officeAcronymCol} AS OfficeAcronym`);
+      groupColumns.push(`e.${officeAcronymCol}`);
+      orderColumns.push('OfficeAcronym ASC');
+    }
+    if (officeNameCol) {
+      selectColumns.push(`e.${officeNameCol} AS OfficeName`);
+      groupColumns.push(`e.${officeNameCol}`);
+      orderColumns.push('OfficeName ASC');
+    }
+    selectColumns.push('COUNT(*) AS commissioned_corps_count');
+    let orderByClause = 'ORDER BY commissioned_corps_count DESC';
+    if (orderColumns.length) {
+      orderByClause += `, ${orderColumns.join(', ')}`;
+    }
+
+    return {
+      status: 'ready',
+      question: '',
+      sql: [
+        `SELECT ${selectColumns.join(', ')}`,
+        `FROM ${employeeTable} e`,
+        `WHERE ${baseFilters.join('\n  AND ')}`,
+        `GROUP BY ${groupColumns.join(', ')}`,
+        orderByClause
+      ].join('\n'),
+      assumptions: [
+        `Commissioned Corps employees are identified by non-empty ${employeeTable}.${commissionedCol}.`,
+        'Distribution wording was interpreted as an aggregate count request, so results are grouped by office fields on HR_Employee.',
+        activeChecks.length ? 'Current employees are filtered using separation/deactivation null checks.' : 'No active-status filter was requested.'
+      ],
+      explanation: `Using ${employeeTable}.${commissionedCol} to count Commissioned Corps employees by office.`
+    };
+  }
+
+  const selectedColumns = [];
+  if (employeeIdentifierCol) selectedColumns.push(`e.${employeeIdentifierCol}`);
+  if (monikerCol) selectedColumns.push(`e.${monikerCol}`);
+  if (emailCol) selectedColumns.push(`e.${emailCol}`);
+  if (titleCol) selectedColumns.push(`e.${titleCol}`);
+  selectedColumns.push(`e.${commissionedCol}`);
+
+  return {
+    status: 'ready',
+    question: '',
+    sql: [
+      `SELECT ${selectedColumns.join(', ')}`,
+      `FROM ${employeeTable} e`,
+      `WHERE ${baseFilters.join('\n  AND ')}`,
+      ...(monikerCol ? [`ORDER BY e.${monikerCol} ASC`] : [])
+    ].join('\n'),
+    assumptions: [
+      `Commissioned Corps employees are identified by non-empty ${employeeTable}.${commissionedCol}.`,
+      activeChecks.length ? 'Current employees are filtered using separation/deactivation null checks.' : 'No active-status filter was requested.'
+    ],
+    explanation: `Using ${employeeTable}.${commissionedCol} directly to identify Commissioned Corps employees.`
+  };
+}
+
+async function buildDeterministicEmployeeAttributeDistributionDecision({ schema, conversation }) {
+  const employeeTable = findSchemaTableNameByBaseName(schema, 'HR_Employee');
+  if (!employeeTable) {
+    return null;
+  }
+
+  const employeeColumns = schema[employeeTable] || [];
+  const distributionRequest = extractEmployeeAttributeDistributionRequest(conversation, employeeColumns);
+  if (!distributionRequest) {
+    return null;
+  }
+
+  const officeAcronymCol = findColumnName(employeeColumns, 'OfficeAcronym');
+  const officeNameCol = findColumnName(employeeColumns, 'OfficeName');
+  if (!officeAcronymCol && !officeNameCol) {
+    return null;
+  }
+
+  const separationDateCol = findColumnName(employeeColumns, 'SeparationDate') || findColumnName(employeeColumns, 'SeparatedDate');
+  const deactivateTimestampCol = findColumnName(employeeColumns, 'DeactivateTimestamp')
+    || findColumnName(employeeColumns, 'DeactivatedTimestamp')
+    || findColumnName(employeeColumns, 'DeactivateDate');
+
+  const distributionSpec = distributionRequest.spec;
+  if (!distributionSpec) {
+    return null;
+  }
+
+  const attributeDetails = buildEmployeeDistributionAttributeDetails({
+    distributionRequest,
+    distributionSpec,
+    employeeColumns,
+    employeeTable
+  });
+  if (!attributeDetails) {
+    return null;
+  }
+
+  const { attributePredicate, attributeExplanation } = attributeDetails;
+
+  if (!attributePredicate) {
+    return null;
+  }
+
+  const filters = [attributePredicate];
+  if (userRequestedActiveEmployees(conversation)) {
+    if (separationDateCol) {
+      filters.push(`e.${separationDateCol} IS NULL`);
+    }
+    if (deactivateTimestampCol) {
+      filters.push(`e.${deactivateTimestampCol} IS NULL`);
+    }
+  }
+
+  const selectColumns = [];
+  const groupColumns = [];
+  const orderColumns = [];
+  if (officeAcronymCol) {
+    selectColumns.push(`e.${officeAcronymCol} AS OfficeAcronym`);
+    groupColumns.push(`e.${officeAcronymCol}`);
+    orderColumns.push('OfficeAcronym ASC');
+  }
+  if (officeNameCol) {
+    selectColumns.push(`e.${officeNameCol} AS OfficeName`);
+    groupColumns.push(`e.${officeNameCol}`);
+    orderColumns.push('OfficeName ASC');
+  }
+  selectColumns.push('COUNT(*) AS employee_count');
+
+  let orderByClause = 'ORDER BY employee_count DESC';
+  if (orderColumns.length) {
+    orderByClause += `, ${orderColumns.join(', ')}`;
+  }
+
+  return {
+    status: 'ready',
+    question: '',
+    sql: [
+      `SELECT ${selectColumns.join(', ')}`,
+      `FROM ${employeeTable} e`,
+      `WHERE ${filters.join('\n  AND ')}`,
+      `GROUP BY ${groupColumns.join(', ')}`,
+      orderByClause
+    ].join('\n'),
+    assumptions: [
+      attributeExplanation,
+      'Distribution wording was interpreted as an aggregate count request across CMS offices/centers using HR_Employee office fields.',
+      (separationDateCol || deactivateTimestampCol) && userRequestedActiveEmployees(conversation)
+        ? 'Current employees are filtered using separation/deactivation null checks.'
+        : 'No active-status filter was requested.'
+    ],
+    explanation: `Using employee-record attributes on ${employeeTable} to produce an office-level distribution.`
+  };
+}
+
+async function buildDeterministicManagerCountDecision({ connectionId, connectionType, schema, conversation }) {
+  const requested = userRequestedManagerCount(conversation);
+  if (!requested) {
+    return null;
+  }
+
+  const employeeTable = findSchemaTableNameByBaseName(schema, 'HR_Employee');
+  if (!employeeTable) {
+    return null;
+  }
+
+  const employeeColumns = schema[employeeTable] || [];
+  const isManagerCol = findColumnName(employeeColumns, 'IsManager');
+  const hasManagerRoleCol = findColumnName(employeeColumns, 'HasManagerRole');
+  const managerFlagCol = findColumnName(employeeColumns, 'ManagerFlag');
+  const managerCol = isManagerCol || hasManagerRoleCol || managerFlagCol;
+  if (!managerCol) {
+    return null;
+  }
+
+  let managerPredicate = `e.${managerCol} = 1`;
+  if (isManagerCol && hasManagerRoleCol) {
+    managerPredicate = `(e.${isManagerCol} = 1 OR e.${hasManagerRoleCol} = 1)`;
+  }
+
+  const filters = [managerPredicate];
+  if (userRequestedActiveEmployees(conversation)) {
+    const separationDateCol = findColumnName(employeeColumns, 'SeparationDate') || findColumnName(employeeColumns, 'SeparatedDate');
+    const deactivateCol = findColumnName(employeeColumns, 'DeactivateTimestamp')
+      || findColumnName(employeeColumns, 'DeactivatedTimestamp')
+      || findColumnName(employeeColumns, 'DeactivateDate');
+    if (separationDateCol) {
+      filters.push(`e.${separationDateCol} IS NULL`);
+    }
+    if (deactivateCol) {
+      filters.push(`e.${deactivateCol} IS NULL`);
+    }
+  }
+
+  const acronym = getConversationAcronymCandidates(conversation).at(-1) || '';
+  let componentScopeColumns = [];
+  if (acronym) {
+    const scopeMatch = buildEmployeeAcronymScopeFilter(employeeColumns, 'e', acronym);
+    componentScopeColumns = scopeMatch.columns;
+
+    if (scopeMatch.predicate) {
+      filters.push(scopeMatch.predicate);
+    }
+  }
+
+  let acronymAssumption = 'No component acronym filter was requested.';
+  if (acronym && componentScopeColumns.length) {
+    acronymAssumption = `${acronym} is matched across ${componentScopeColumns.join(', ')} to include employees at the division, group, office, or home-component level.`;
+  } else if (acronym) {
+    acronymAssumption = `${acronym} was mentioned, but no employee component acronym field was available for filtering.`;
+  }
+
+  return {
+    status: 'ready',
+    question: '',
+    sql: [
+      'SELECT COUNT(*) AS manager_count',
+      `FROM ${employeeTable} e`,
+      `WHERE ${filters.join('\n  AND ')}`
+    ].join('\n'),
+    assumptions: [
+      isManagerCol && hasManagerRoleCol
+        ? `${isManagerCol} or ${hasManagerRoleCol} indicates manager status (1 = manager).`
+        : `${managerCol} indicates manager status (1 = manager).`,
+      userRequestedActiveEmployees(conversation)
+        ? 'Active employees are filtered by null separation and deactivation fields when available.'
+        : 'No active-status filter was requested.',
+      acronymAssumption
+    ],
+    explanation: 'Using deterministic manager-count logic to count managers directly from HR_Employee.'
+  };
+}
+
 function findSchemaTableNameByBaseName(schema, baseName) {
   const wanted = normalizeSearchToken(baseName);
   return Object.keys(schema || {}).find((tableName) => normalizeTableBaseName(tableName) === wanted) || '';
@@ -1431,6 +2357,30 @@ function findColumnName(columns, preferredName) {
 
 function escapeSqlStringLiteral(value) {
   return String(value || '').replaceAll("'", "''");
+}
+
+function buildEmployeeAcronymScopeFilter(employeeColumns, tableAlias, acronym) {
+  const candidateColumns = [
+    findColumnName(employeeColumns, 'DivisionAcronym'),
+    findColumnName(employeeColumns, 'GroupAcronym'),
+    findColumnName(employeeColumns, 'OfficeAcronym'),
+    findColumnName(employeeColumns, 'ComponentAcronym')
+  ].filter(Boolean);
+
+  const uniqueColumns = [...new Set(candidateColumns)];
+  if (!uniqueColumns.length) {
+    return { predicate: '', columns: [] };
+  }
+
+  const escapedAcronym = escapeSqlStringLiteral(acronym);
+  const predicate = uniqueColumns
+    .map((columnName) => `${tableAlias}.${columnName} = '${escapedAcronym}'`)
+    .join(' OR ');
+
+  return {
+    predicate: uniqueColumns.length > 1 ? `(${predicate})` : predicate,
+    columns: uniqueColumns
+  };
 }
 
 function buildSingleRowLookupSql({ connectionType, tableName, acronymColumn, levelColumn, acronymValue }) {
@@ -1503,34 +2453,109 @@ async function buildDeterministicAcronymEmployeeDecision({ connectionId, connect
   }
 
   const employeeColumns = schema[employeeTable] || [];
-  const divisionAcronymCol = findColumnName(employeeColumns, 'DivisionAcronym');
-  const groupAcronymCol = findColumnName(employeeColumns, 'GroupAcronym');
-  const officeAcronymCol = findColumnName(employeeColumns, 'OfficeAcronym');
-  const employeeComponentAcronymCol = findColumnName(employeeColumns, 'ComponentAcronym');
   const separationDateCol = findColumnName(employeeColumns, 'SeparationDate') || findColumnName(employeeColumns, 'SeparatedDate');
   const deactivateTimestampCol = findColumnName(employeeColumns, 'DeactivateTimestamp')
     || findColumnName(employeeColumns, 'DeactivatedTimestamp')
     || findColumnName(employeeColumns, 'DeactivateDate');
+  const echelonCol = findColumnName(employeeColumns, 'Echelon');
+  const titleCol = findColumnName(employeeColumns, 'Title');
+  const managerEmployeeIdentifierCol = findColumnName(employeeColumns, 'ManagerEmployeeIdentifier');
+  const managerUserIdentifierCol = findColumnName(employeeColumns, 'ManagerUserIdentifier');
+  const managerLastFirstNameCol = findColumnName(employeeColumns, 'ManagerLastFirstName');
+  const managerFirstLastNameCol = findColumnName(employeeColumns, 'ManagerFirstLastName');
+  const managerTitleCol = findColumnName(employeeColumns, 'ManagerTitle');
+  const managerEmailCol = findColumnName(employeeColumns, 'ManagerEmail');
 
-  if (!divisionAcronymCol || !groupAcronymCol || !officeAcronymCol) {
+  const requestedRowLimit = extractRequestedRowLimit(conversation);
+  const topLeaderIntent = userRequestedTopLeaders(conversation);
+
+  const scopeMatch = buildEmployeeAcronymScopeFilter(employeeColumns, 'e', acronym);
+  if (!scopeMatch.predicate) {
     return null;
   }
 
-  const levelLookup = await resolveComponentLevelForAcronym({
-    connectionId,
-    connectionType,
-    schema,
-    acronym
-  });
+  const activeChecks = [];
+  if (separationDateCol) {
+    activeChecks.push(`e.${separationDateCol} IS NULL`);
+  }
+  if (deactivateTimestampCol) {
+    activeChecks.push(`e.${deactivateTimestampCol} IS NULL`);
+  }
 
-  const employeeFieldMap = {
-    division: divisionAcronymCol,
-    group: groupAcronymCol,
-    office: officeAcronymCol
-  };
-  let selectedEmployeeAcronymCol = mapComponentLevelToEmployeeField(levelLookup.level, employeeFieldMap);
-  if (!selectedEmployeeAcronymCol) {
-    selectedEmployeeAcronymCol = employeeComponentAcronymCol || officeAcronymCol;
+  if (topLeaderIntent && managerEmployeeIdentifierCol) {
+    const managerDisplayNameCol = managerLastFirstNameCol || managerFirstLastNameCol;
+    const managerSelectColumns = [];
+    const managerGroupColumns = [];
+    let hierarchyDepthExpr = '';
+    if (echelonCol) {
+      hierarchyDepthExpr = connectionType === 'mssql'
+        ? `MIN(LEN(LTRIM(RTRIM(e.${echelonCol}))))`
+        : `MIN(LENGTH(TRIM(e.${echelonCol})))`;
+    }
+    const echelonPathExpr = echelonCol ? `MIN(e.${echelonCol})` : '';
+
+    managerSelectColumns.push(`e.${managerEmployeeIdentifierCol} AS ManagerEmployeeIdentifier`);
+    managerGroupColumns.push(`e.${managerEmployeeIdentifierCol}`);
+
+    if (managerUserIdentifierCol) {
+      managerSelectColumns.push(`e.${managerUserIdentifierCol} AS ManagerUserIdentifier`);
+      managerGroupColumns.push(`e.${managerUserIdentifierCol}`);
+    }
+    if (managerDisplayNameCol) {
+      managerSelectColumns.push(`e.${managerDisplayNameCol} AS ManagerName`);
+      managerGroupColumns.push(`e.${managerDisplayNameCol}`);
+    }
+    if (managerTitleCol) {
+      managerSelectColumns.push(`e.${managerTitleCol} AS ManagerTitle`);
+      managerGroupColumns.push(`e.${managerTitleCol}`);
+    }
+    if (managerEmailCol) {
+      managerSelectColumns.push(`e.${managerEmailCol} AS ManagerEmail`);
+      managerGroupColumns.push(`e.${managerEmailCol}`);
+    }
+    if (echelonPathExpr) {
+      managerSelectColumns.push(`${echelonPathExpr} AS EchelonPathExample`);
+    }
+    if (hierarchyDepthExpr) {
+      managerSelectColumns.push(`${hierarchyDepthExpr} AS HierarchyDepth`);
+    }
+    managerSelectColumns.push('COUNT(*) AS DirectReportCount');
+
+    const leaderFilters = [scopeMatch.predicate, `e.${managerEmployeeIdentifierCol} IS NOT NULL`];
+    if (activeChecks.length) {
+      leaderFilters.push(activeChecks.join(' AND '));
+    }
+
+    const leaderLimit = requestedRowLimit > 0 ? requestedRowLimit : 5;
+    const leaderSql = [
+      connectionType === 'mssql'
+        ? `SELECT TOP (${leaderLimit}) ${managerSelectColumns.join(', ')}`
+        : `SELECT ${managerSelectColumns.join(', ')}`,
+      `FROM ${employeeTable} e`,
+      `WHERE ${leaderFilters.join('\n  AND ')}`,
+      `GROUP BY ${managerGroupColumns.join(', ')}`,
+      'ORDER BY '
+        + (hierarchyDepthExpr ? 'HierarchyDepth ASC, ' : '')
+        + 'DirectReportCount DESC'
+        + (managerDisplayNameCol ? ', ManagerName ASC' : '')
+        + (managerTitleCol ? ', ManagerTitle ASC' : ''),
+      ...(connectionType === 'mssql' ? [] : [`LIMIT ${leaderLimit}`])
+    ].join('\n');
+
+    return {
+      status: 'ready',
+      question: '',
+      sql: leaderSql,
+      assumptions: [
+        `Acronym '${acronym}' was matched across ${scopeMatch.columns.join(', ')} to include division, group, office, and home-component membership on ${employeeTable}.`,
+        'Top/leadership wording was interpreted using HR_Employee manager relationship fields from subordinate employee rows.',
+        hierarchyDepthExpr
+          ? `Managers are ranked first by the shortest in-scope ${echelonCol} hierarchy depth, then by the number of active employees referencing them through ${managerEmployeeIdentifierCol}.`
+          : `Managers are ranked by the number of in-scope active employees referencing them through ${managerEmployeeIdentifierCol}.`,
+        `The result set is limited to the top ${leaderLimit} row(s).`
+      ],
+      explanation: `Using manager relationship fields on ${employeeTable} to identify the top leaders for the requested component scope.`
+    };
   }
 
   const selectedColumns = [];
@@ -1542,6 +2567,7 @@ async function buildDeterministicAcronymEmployeeDecision({ connectionId, connect
 
   if (employeeIdentifierCol) selectedColumns.push(`e.${employeeIdentifierCol}`);
   if (monikerCol) selectedColumns.push(`e.${monikerCol}`);
+  if (topLeaderIntent && titleCol) selectedColumns.push(`e.${titleCol}`);
   if (emailCol) selectedColumns.push(`e.${emailCol}`);
   if (!monikerCol && firstNameCol) selectedColumns.push(`e.${firstNameCol}`);
   if (!monikerCol && lastNameCol) selectedColumns.push(`e.${lastNameCol}`);
@@ -1550,37 +2576,46 @@ async function buildDeterministicAcronymEmployeeDecision({ connectionId, connect
     return null;
   }
 
-  const escapedAcronym = escapeSqlStringLiteral(acronym);
-
-  const activeChecks = [];
-  if (separationDateCol) {
-    activeChecks.push(`e.${separationDateCol} IS NULL`);
+  const filters = [scopeMatch.predicate];
+  if (activeChecks.length) {
+    filters.push(activeChecks.join(' AND '));
   }
-  if (deactivateTimestampCol) {
-    activeChecks.push(`e.${deactivateTimestampCol} IS NULL`);
+
+  const selectPrefix = connectionType === 'mssql' && requestedRowLimit > 0
+    ? `SELECT TOP (${requestedRowLimit}) ${selectedColumns.join(', ')}`
+    : `SELECT ${selectedColumns.join(', ')}`;
+
+  const orderByParts = [];
+  if (topLeaderIntent && titleCol) {
+    orderByParts.push(`e.${titleCol} ASC`);
+  }
+  if (monikerCol) {
+    orderByParts.push(`e.${monikerCol} ASC`);
   }
 
   const sql = [
-    `SELECT ${selectedColumns.join(', ')}`,
+    selectPrefix,
     `FROM ${employeeTable} e`,
-    `WHERE e.${selectedEmployeeAcronymCol} = '${escapedAcronym}'`,
-    ...(activeChecks.length ? [`  AND ${activeChecks.join(' AND ')}`] : [])
+    `WHERE ${filters.join('\n  AND ')}`,
+    ...(orderByParts.length ? [`ORDER BY ${orderByParts.join(', ')}`] : []),
+    ...(connectionType !== 'mssql' && requestedRowLimit > 0 ? [`LIMIT ${requestedRowLimit}`] : [])
   ].join('\n');
-
-  const resolvedLevelLabel = levelLookup.level || 'unknown';
 
   return {
     status: 'ready',
     question: '',
     sql,
     assumptions: [
-      levelLookup.componentTable && levelLookup.componentAcronymCol
-        ? `A pre-query checked ${levelLookup.componentTable}.${levelLookup.componentAcronymCol} = '${acronym}' and resolved level '${resolvedLevelLabel}'.`
-        : `Acronym '${acronym}' was used for component filtering.`,
-      `Resolved level mapping selected HR_Employee.${selectedEmployeeAcronymCol}. Center is treated as Office level.`,
+      `Acronym '${acronym}' was matched across ${scopeMatch.columns.join(', ')} to include division, group, office, and home-component membership on ${employeeTable}.`,
+      topLeaderIntent
+        ? 'Top/leadership wording was detected, but no manager relationship field was available, so the query fell back to scoped employees.'
+        : 'No leadership-only filter was requested.',
+      requestedRowLimit > 0
+        ? `The result set is limited to the top ${requestedRowLimit} row(s) requested by the user.`
+        : 'No explicit row limit was requested.',
       activeChecks.length ? 'Current employees are filtered using separation/deactivation null checks.' : 'No separation/deactivation fields were available for current-status filtering.'
     ],
-    explanation: 'Using deterministic pre-query resolution: HR_Component is checked first for acronym level, then HR_Employee is filtered using the resolved acronym field.'
+    explanation: `Using ${employeeTable} acronym fields directly for hierarchy-aware component membership filtering.`
   };
 }
 
@@ -1686,8 +2721,10 @@ function parseAiDecision(rawContent) {
 //   ].join('\n\n');
 // }
 
-function buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, currentQuery, requestedColumns }) {
+function buildAiSystemPrompt({ connectionId, connectionType, databaseName, relevantSchema, currentQuery, requestedColumns, echelonContext }) {
   const schemaJson = JSON.stringify(relevantSchema.relevantTables, null, 2);
+  const schemaDocsContext = buildSchemaDocsContext({ databaseName, relevantSchema });
+  const organizationAliasContext = buildOrganizationAliasContext(databaseName);
   const currentQueryText = currentQuery
     ? `Current query box contents:\n${currentQuery}`
     : 'Current query box contents: empty';
@@ -1702,6 +2739,7 @@ Your task is to divine the correct read‑only SQL query based solely on the sch
 
 Connection: ${connectionId}
 Connection Type: ${connectionType}
+${databaseName ? `Database: ${databaseName}` : ''}
 
 The user’s current query box contains:
 ${currentQueryText}
@@ -1733,13 +2771,21 @@ ABSOLUTE RULES — HIGHEST PRIORITY
 5. A JOIN is FORBIDDEN unless the user explicitly asks for component metadata. 
    Filtering employees by component MUST be done using HR_Employee only.
 
-6. If the user provides a component acronym (such as 'DASM'), you MUST resolve that acronym in HR_Component first
-  to determine Level (Division, Group, Office, or Center), then filter HR_Employee on the matching level field.
-  Example mapping: Division -> HR_Employee.DivisionAcronym, Group -> HR_Employee.GroupAcronym, Office -> HR_Employee.OfficeAcronym, Center -> HR_Employee.OfficeAcronym.
-  DO NOT assume every acronym is an Office.
+5a. Commissioned Corps status is an employee-record attribute on HR_Employee, just like series, grade, title, or other personnel attributes.
+    When the user asks for Commissioned Corps employees or officers, use the employee-table indicator field directly.
+    Do NOT infer Commissioned Corps status from CMS, Medicare, office, component, or hierarchy filters.
+
+6. If the user provides a component acronym (such as 'DASM' or 'OIT') and is asking for employees or managers in that component,
+  you MUST filter HR_Employee using the employee-side acronym fields directly.
+  Use an OR filter across the available hierarchy fields as needed:
+  HR_Employee.DivisionAcronym = acronym
+  OR HR_Employee.GroupAcronym = acronym
+  OR HR_Employee.OfficeAcronym = acronym
+  OR HR_Employee.ComponentAcronym = acronym
+  ComponentAcronym is the employee's home component. The broader OR pattern is used so higher-level component requests also include subordinate groups and offices.
 
 6a. Default matching key for component lookup is HR_Component.ComponentAcronym.
-    Use ComponentName, ComponentIdentifier, or AdminCode only when the user explicitly supplies that exact type of value.
+    Use HR_Component only when the user explicitly asks for component metadata such as Level, name, hierarchy, or parent relationships.
     Do not ask the user for component name when an acronym is already provided.
 
 7. When looking for active or not-separated employees, you MUST use:
@@ -1757,7 +2803,12 @@ When one table clearly aligns with the user’s intent, choose it without hesita
 
 When the user speaks in unfamiliar terms (such as acronyms or titles), consult the discovery hints to map meaning to likely fields before seeking clarification.
 
-When the user asks for a Division, Group, Office, Center, or Component, use the HR_Component table to resolve component metadata and level when needed. For employee retrieval, apply the final filter on HR_Employee using the level-appropriate acronym field.
+When an Echelon snapshot is provided, use it as direct evidence of component hierarchy paths and related acronyms.
+
+When the user asks about Commissioned Corps employees or officers, treat that as an employee attribute lookup on HR_Employee, not as a component-membership question.
+Use the dedicated Commissioned Corps indicator field on the employee record the same way you would use series, title, grade, or other personnel attributes.
+
+When the user asks for a Division, Group, Office, Center, or Component, use the HR_Component table only when component metadata or hierarchy is needed. For employee retrieval by component acronym, filter directly on HR_Employee fields and use the hierarchy-aware OR pattern when the request is about employees in that component.
 
 When the user is asking for employees belonging to a component (Division, Group, Office, or ComponentAcronym), the HR_Employee table is authoritative. You MUST use the fields already present on HR_Employee such as:
 - ComponentAcronym
@@ -1765,9 +2816,11 @@ When the user is asking for employees belonging to a component (Division, Group,
 - GroupAcronym, GroupName, GroupIdentifier
 - OfficeAcronym, OfficeName, OfficeIdentifier
 
-You SHOULD avoid joining HR_Employee to HR_Component for final membership filtering. Prefer a two-step pattern: resolve level/acronym from HR_Component, then filter HR_Employee directly.
+You SHOULD avoid joining HR_Employee to HR_Component for final membership filtering. For acronym-based employee membership, filter directly on HR_Employee using DivisionAcronym, GroupAcronym, OfficeAcronym, and ComponentAcronym as needed.
 
-If the user provides a component acronym (such as 'DASM'), you MUST check HR_Component.ComponentAcronym and HR_Component.Level first, then choose the correct HR_Employee level field. Map Center to HR_Employee.OfficeAcronym. DO NOT assume it is OfficeAcronym before level resolution.
+If the user provides a component acronym (such as 'DASM' or 'OIT') and is asking for employees or managers in that component, you MUST use the HR_Employee acronym fields directly. Prefer a final predicate like:
+HR_Employee.DivisionAcronym = 'OIT' OR HR_Employee.GroupAcronym = 'OIT' OR HR_Employee.OfficeAcronym = 'OIT' OR HR_Employee.ComponentAcronym = 'OIT'
+Use HR_Component.Level only when the question is about metadata, hierarchy, or the component itself rather than employee membership.
 
 When component lookup input is ambiguous, prefer acronym interpretation first.
 Only use ComponentName when the user clearly gives a name phrase.
@@ -1777,6 +2830,8 @@ Only use AdminCode when the user explicitly gives or asks for AdminCode.
 When the request is unclear, missing essential columns, or could refer to multiple tables, ask ONE concise clarifying question.
 
 When the meaning is clear, produce a read‑only SQL query appropriate for the connection type.
+
+When the user asks for distribution, breakdown, or counts across offices/components/groups/divisions, treat that as an aggregate statistics request. Return grouped counts, not a list of individual employees.
 
 Favor precision over breadth; avoid SELECT * when specific fields are named.
 
@@ -1838,6 +2893,18 @@ ${relevantSchema.learnedHints?.length ? JSON.stringify(relevantSchema.learnedHin
 
 Discovery hints:
 ${relevantSchema.discoveryHints?.length ? JSON.stringify(relevantSchema.discoveryHints) : 'none'}
+
+${organizationAliasContext ? `${organizationAliasContext}
+
+` : ''}
+
+${echelonContext ? `${echelonContext}
+
+` : ''}
+
+${schemaDocsContext ? `${schemaDocsContext}
+
+` : ''}
 
 ========================
 RELEVANT SCHEMA EXCERPT
@@ -1956,9 +3023,40 @@ If you are uncertain:
 
 
 
-async function askOllamaForSql({ model, connectionId, connectionType, schema, conversation, currentQuery }) {
+async function askOllamaForSql({ model, connectionId, connectionType, databaseName, schema, conversation, currentQuery }) {
   const relevantSchema = buildRelevantSchemaSubset(schema, conversation);
   const requestedColumns = relevantSchema.requestedColumns || inferRequestedColumns(relevantSchema, conversation);
+  const echelonContext = await buildEmployeeEchelonContext({ connectionId, connectionType, databaseName, schema, conversation });
+  const deterministicAttributeDistributionDecision = await buildDeterministicEmployeeAttributeDistributionDecision({ schema, conversation });
+  if (deterministicAttributeDistributionDecision) {
+    if (deterministicAttributeDistributionDecision.sql) {
+      learnSchemaHintsFromDecision({
+        latestUserMessage: relevantSchema.latestUserMessage,
+        sql: deterministicAttributeDistributionDecision.sql
+      });
+    }
+    return deterministicAttributeDistributionDecision;
+  }
+  const deterministicCommissionedCorpsDecision = await buildDeterministicCommissionedCorpsDecision({ schema, conversation });
+  if (deterministicCommissionedCorpsDecision) {
+    if (deterministicCommissionedCorpsDecision.sql) {
+      learnSchemaHintsFromDecision({
+        latestUserMessage: relevantSchema.latestUserMessage,
+        sql: deterministicCommissionedCorpsDecision.sql
+      });
+    }
+    return deterministicCommissionedCorpsDecision;
+  }
+  const deterministicManagerCountDecision = await buildDeterministicManagerCountDecision({ connectionId, connectionType, schema, conversation });
+  if (deterministicManagerCountDecision) {
+    if (deterministicManagerCountDecision.sql) {
+      learnSchemaHintsFromDecision({
+        latestUserMessage: relevantSchema.latestUserMessage,
+        sql: deterministicManagerCountDecision.sql
+      });
+    }
+    return deterministicManagerCountDecision;
+  }
   const deterministicManagerAgeDecision = await buildDeterministicManagerAgeDecision({ connectionType, schema, conversation });
   if (deterministicManagerAgeDecision) {
     if (deterministicManagerAgeDecision.status === 'ready' && deterministicManagerAgeDecision.sql) {
@@ -2006,7 +3104,7 @@ async function askOllamaForSql({ model, connectionId, connectionType, schema, co
       {
         role: 'system',
         content: STRICT_GLOBAL_PROMPT + "\n\n========================\nSQL PLANNING CONTEXT\n========================\n" +
-                buildAiSystemPrompt({ connectionId, connectionType, relevantSchema, currentQuery, requestedColumns })
+          buildAiSystemPrompt({ connectionId, connectionType, databaseName, relevantSchema, currentQuery, requestedColumns, echelonContext })
       },
       ...normalizeAiConversation(conversation)
     ];
@@ -2222,7 +3320,7 @@ function createServer(port) {
     }
 
     if (url.pathname === "/api/health" && req.method === "GET") {
-      return Response.json({ ok: true, ts: Date.now() }, { headers: corsHeaders });
+      return Response.json({ ok: true, ts: Date.now(), pid: process.pid, token: SERVER_STARTUP_TOKEN }, { headers: corsHeaders });
     }
     
     if (url.pathname === "/bootstrap-icons.css") {
@@ -2491,11 +3589,19 @@ function createServer(port) {
           ? { id: 'default', type: 'sqlite' }
           : connections.find((entry) => entry.id === connectionId);
         const connectionType = connectionRecord?.type || 'sqlite';
+        let connectionConfig = null;
+        try {
+          connectionConfig = connectionRecord?.config ? JSON.parse(connectionRecord.config) : null;
+        } catch {
+          connectionConfig = null;
+        }
+        const databaseName = normalizeDatabaseName(connectionConfig?.database);
 
         const decision = await askOllamaForSql({
           model: selectedModel,
           connectionId,
           connectionType,
+          databaseName,
           schema,
           conversation,
           currentQuery: normalizeRunQueryText(currentQuery || '')
@@ -2695,6 +3801,10 @@ function createServer(port) {
 }
 
 function startServerWithFallback(preferredPort) {
+  if (Number.isFinite(Number.parseInt(process.env.PYTHIA_PORT || '', 10))) {
+    return createServer(preferredPort);
+  }
+
   let lastPortError = null;
 
   for (let offset = 0; offset < MAX_PORT_ATTEMPTS; offset++) {
