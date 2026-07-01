@@ -94,29 +94,31 @@ function escapeHtmlText(value) {
 }
 
 export async function loadAllSchemas() {
-  if (schemaCache[currentConnection]) {
-    return schemaCache[currentConnection];
+  const connectionId = currentConnection;
+
+  if (schemaCache[connectionId]) {
+    return schemaCache[connectionId];
   }
 
-  if (schemaLoadPromises[currentConnection]) {
-    return schemaLoadPromises[currentConnection];
+  if (schemaLoadPromises[connectionId]) {
+    return schemaLoadPromises[connectionId];
   }
 
-  schemaLoadPromises[currentConnection] = (async () => {
+  schemaLoadPromises[connectionId] = (async () => {
     try {
-      const schema = await call(`/api/getSchema?id=${currentConnection}`);
-      schemaCache[currentConnection] = schema;
+      const schema = await call(`/api/getSchema?id=${connectionId}`);
+      schemaCache[connectionId] = schema;
       return schema;
     } catch (err) {
-      console.warn('Failed to load schema for connection:', currentConnection, err?.message || err);
-      schemaCache[currentConnection] = {};
-      return schemaCache[currentConnection];
+      console.warn('Failed to load schema for connection:', connectionId, err?.message || err);
+      schemaCache[connectionId] = {};
+      return schemaCache[connectionId];
     } finally {
-      delete schemaLoadPromises[currentConnection];
+      delete schemaLoadPromises[connectionId];
     }
   })();
 
-  return schemaLoadPromises[currentConnection];
+  return schemaLoadPromises[connectionId];
 }
 
 export async function loadSchema() {
@@ -427,8 +429,15 @@ export function showFieldSelector(table, fields, onSelect) {
   }
 }
 
-export function showTableSelector(onSelect) {
-  const schema = schemaCache[currentConnection] || {};
+export async function showTableSelector(onSelect) {
+  let schema = schemaCache[currentConnection] || {};
+
+  // One retry helps when startup timing causes an initial empty schema cache.
+  if (Object.keys(schema).length === 0) {
+    await loadAllSchemas();
+    schema = schemaCache[currentConnection] || {};
+  }
+
   const tableNames = Object.keys(schema);
   const useSearch = tableNames.length > 30;
   
