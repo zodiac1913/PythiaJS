@@ -1,4 +1,0 @@
-{"generatedAt": "2026-06-22T14:07:44.596791+00:00", "database": "CATSDEV", "tableCount": 347, "columnCount": 8615, "priorityTables": ["HR.HR_Employee", "CORE.User", "HR.HR_Component"], "outputRoot": "schema_docs"}
-{"generatedAt": "2026-06-22T14:07:55.370031+00:00", "database": "CATSDEV", "tableCount": 347, "columnCount": 8615, "priorityTables": ["HR.HR_Employee", "CORE.User", "HR.HR_Component"], "outputRoot": "schema_docs"}
-{"generatedAt": "2026-06-22T14:12:27.281975+00:00", "database": "CATSDEV", "tableCount": 347, "columnCount": 8615, "priorityTables": ["HR.HR_Employee", "CORE.User", "HR.HR_Component"], "outputRoot": "schema_docs"}
-{"generatedAt": "2026-06-22T14:12:57.655304+00:00", "database": "CATSDEV", "tableCount": 347, "columnCount": 8615, "priorityTables": ["HR.HR_Employee", "CORE.User", "HR.HR_Component"], "outputRoot": "schema_docs"}

@@ -1,4 +1,0 @@
-{
-  "backend": "sqlite",
-  "sqlite_file": "pythia.db"
-}
