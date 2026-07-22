@@ -2,14 +2,26 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run RustyPythia (Tauri Dev)",
-      "type": "node-terminal",
+      "type": "node",
       "request": "launch",
-      "command": "npm run tauri dev",
+      "name": "Launch PythiaJS (App + Server)",
+      "runtimeExecutable": "bun",
+      "program": "${workspaceFolder}/index.js",
       "cwd": "${workspaceFolder}",
-      "env": {
-        "RUSTY_PYTHIA_LEGACY_ROOT": "/Users/rxjr/Desktop/Dev/PythiaJS"
-      }
+      "console": "internalConsole",
+      "outputCapture": "std"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Server Only",
+      "runtimeExecutable": "bun",
+      "program": "${workspaceFolder}/src/server.js",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "outputCapture": "std",
+      "killBehavior": "polite"
     }
-  ]
+  ],
+  "compounds": []
 }

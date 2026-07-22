@@ -1,0 +1,33 @@
+PythiaJS - Quick Start (Windows)
+
+1) Install Microsoft Edge WebView2 Runtime
+   https://go.microsoft.com/fwlink/p/?LinkId=2124703
+
+2) Extract the full PythiaJS release zip to a normal folder
+   Example: C:\Users\<you>\Downloads\PythiaJS
+
+3) Verify these items are present in the extracted folder
+   - PythiaJS executable (.exe)
+   - config.json
+   - version.txt
+   - src\ui\ (folder)
+   - src\db\base\pythia.base.db
+
+4) Launch the executable
+   - Double-click the .exe file
+
+If it does not open:
+
+A) Run from PowerShell to capture errors
+   - Open PowerShell in the extracted folder
+   - Run: .\<your-exe-name>.exe
+
+B) Most common causes
+   - WebView2 runtime is not installed
+   - Not all files from the zip were extracted
+
+C) Share any console error text with the maintainer
+
+Notes:
+- Bun is NOT required for binary users.
+- Bun is only required when running from source code.
